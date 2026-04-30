@@ -13,7 +13,7 @@
     "@tailwindcss/vite": "^4.2.4",
     "@types/papaparse": "^5.5.2",
     "date-fns": "^4.1.0",
-    "lightweight-charts": "^5.2.0",
+    "klinecharts": "^9.8.12",
     "lucide-react": "^1.14.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.5",

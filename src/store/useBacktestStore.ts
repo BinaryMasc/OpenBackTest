@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Candle, Timeframe } from '../types';
-import { aggregateCandles } from '../utils/aggregation';
+
 
 interface BacktestState {
   rawData: Candle[];
