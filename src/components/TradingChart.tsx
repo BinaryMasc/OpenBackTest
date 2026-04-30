@@ -2,7 +2,7 @@ import { useRef, useEffect, useMemo, useState } from 'react';
 import { init, dispose, registerOverlay, type Chart, type Overlay } from 'klinecharts';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { aggregateCandles } from '../utils/aggregation';
-import { Square, Minus, TrendingUp, Trash2, ChevronDown, X, Pen } from 'lucide-react';
+import { Square, Minus, Trash2, ChevronDown, X, Pen, Rows4 } from 'lucide-react';
 
 const hexToRgba = (hex: string, alpha: number) => {
   let r = 0, g = 0, b = 0;
@@ -58,6 +58,60 @@ registerOverlay({
         styles: { style: 'solid' }
       }
     ];
+  }
+});
+
+registerOverlay({
+  name: 'fibonacciLine',
+  totalStep: 3,
+  needDefaultPointFigure: true,
+  createPointFigures: ({ coordinates, overlay }) => {
+    if (coordinates.length < 2) return [];
+    const p1 = coordinates[0];
+    const p2 = coordinates[1];
+    const figures: any[] = [];
+
+    const color = (overlay.styles as any)?.line?.color || 'rgba(33, 150, 243, 0.7)';
+
+    // Trend line
+    figures.push({
+      type: 'line',
+      attrs: { coordinates: [p1, p2] },
+      styles: { style: 'dashed', color: color.replace(/[\d.]+\)$/g, '0.3)') }
+    });
+
+    const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+    const minX = Math.min(p1.x, p2.x);
+    const maxX = Math.max(p1.x, p2.x);
+
+    levels.forEach(level => {
+      const y = p1.y + (p2.y - p1.y) * level;
+      figures.push({
+        type: 'line',
+        attrs: {
+          coordinates: [
+            { x: minX, y },
+            { x: maxX, y }
+          ]
+        },
+        styles: { color }
+      });
+
+      // Percentage label
+      figures.push({
+        type: 'text',
+        attrs: {
+          x: minX + 5,
+          y: y - 2,
+          text: `${(level * 100).toFixed(1)}%`,
+          align: 'left',
+          baseline: 'bottom'
+        },
+        styles: { color: '#ffffff', size: 11 }
+      });
+    });
+
+    return figures;
   }
 });
 
@@ -429,8 +483,6 @@ export function TradingChart() {
   const clearOverlays = () => {
     if (!chartRef.current) return;
 
-    // Get all overlays in the group before clearing
-    const overlaysToClear: any[] = [];
     // Unfortunately klinecharts doesn't have a simple "getAllOverlaysByGroupId"
     // but we can manage our own list if needed, or just skip recording detailed clear for now.
     // However, for a better UX, let's just record that we cleared and maybe store the last state.
@@ -508,7 +560,7 @@ export function TradingChart() {
           className={`p-2 rounded transition-colors ${activeTool === 'fibonacciLine' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'hover:bg-dark-700 text-slate-400 border border-transparent'}`}
           title="Retroceso de Fibonacci"
         >
-          <TrendingUp size={20} />
+          <Rows4 size={20} />
         </button>
 
         <button
