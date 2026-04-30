@@ -2,7 +2,21 @@ import { useRef, useEffect, useMemo, useState } from 'react';
 import { init, dispose, registerOverlay, type Chart, type Overlay } from 'klinecharts';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { aggregateCandles } from '../utils/aggregation';
-import { Square, Minus, TrendingUp, Trash2, ChevronDown, X } from 'lucide-react';
+import { Square, Minus, TrendingUp, Trash2, ChevronDown, X, Pen } from 'lucide-react';
+
+const hexToRgba = (hex: string, alpha: number) => {
+  let r = 0, g = 0, b = 0;
+  if (hex.length === 4) {
+    r = parseInt(hex[1] + hex[1], 16);
+    g = parseInt(hex[2] + hex[2], 16);
+    b = parseInt(hex[3] + hex[3], 16);
+  } else if (hex.length === 7) {
+    r = parseInt(hex.slice(1, 3), 16);
+    g = parseInt(hex.slice(3, 5), 16);
+    b = parseInt(hex.slice(5, 7), 16);
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 
 // Registrar overlay personalizado para rectángulo
 registerOverlay({
@@ -30,12 +44,31 @@ registerOverlay({
   }
 });
 
+// Registrar overlay para lápiz (dibujo libre)
+registerOverlay({
+  name: 'pencil',
+  needDefaultPointFigure: false,
+  needDefaultXAxisFigure: false,
+  needDefaultYAxisFigure: false,
+  totalStep: 1,
+  createPointFigures: ({ coordinates }) => {
+    if (coordinates.length < 2) return [];
+    return [
+      {
+        type: 'line',
+        attrs: { coordinates },
+        styles: { style: 'solid' }
+      }
+    ];
+  }
+});
+
 const INDICATORS_LIST = ['MA', 'EMA', 'SMA', 'MACD', 'VOL', 'RSI', 'BOLL'];
 
 export function TradingChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
-  
+
   const rawData = useBacktestStore((state) => state.rawData);
   const currentIndex = useBacktestStore((state) => state.currentIndex);
   const timeframe = useBacktestStore((state) => state.timeframe);
@@ -44,7 +77,7 @@ export function TradingChart() {
   const prevDataLengthRef = useRef(0);
 
   const [activeTool, setActiveTool] = useState<string | null>(null);
-  
+
   // Indicators State
   const [showIndicatorsMenu, setShowIndicatorsMenu] = useState(false);
   const [activeIndicators, setActiveIndicators] = useState<string[]>([]);
@@ -60,7 +93,9 @@ export function TradingChart() {
 
   // Overlay Config State
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
+  const selectedForDeleteRef = useRef<string | null>(null);
   const [overlayColor, setOverlayColor] = useState('#2196F3');
+  const [overlayOpacity, setOverlayOpacity] = useState(0.5);
 
   const aggregatedData = useMemo(() => {
     if (rawData.length === 0 || currentIndex === -1) return [];
@@ -75,9 +110,9 @@ export function TradingChart() {
     const chart = init('kline-chart-container');
 
     if (chart) {
-       chartRef.current = chart;
-       chart.setStyles('dark'); // Built-in dark theme
-       (window as any).chart = chart;
+      chartRef.current = chart;
+      chart.setStyles('dark'); // Built-in dark theme
+      (window as any).chart = chart;
     }
 
     return () => {
@@ -88,7 +123,7 @@ export function TradingChart() {
   // Update data when aggregatedData changes
   useEffect(() => {
     if (!chartRef.current || aggregatedData.length === 0) return;
-    
+
     // KLineChart format: { timestamp, open, close, high, low, volume }
     const chartData = aggregatedData.map(d => ({
       timestamp: d.time * 1000,
@@ -103,21 +138,21 @@ export function TradingChart() {
 
     const dataList = chartRef.current.getDataList();
     const isNewTimeframe = timeframe !== prevTimeframeRef.current;
-    
+
     // If it's a completely new state, or we rewinded / jumped by a lot
     if (dataList.length === 0 || isNewTimeframe || Math.abs(chartData.length - prevDataLengthRef.current) > 1) {
-       chartRef.current.applyNewData(chartData); 
-       if (isNewTimeframe) chartRef.current.resize();
+      chartRef.current.applyNewData(chartData);
+      if (isNewTimeframe) chartRef.current.resize();
     } else {
-       // Just stepped 1 tick (added 1 candle or updated the last one)
-       // This preserves the current right-offset/scroll position!
-       const lastCandle = chartData[chartData.length - 1];
-       chartRef.current.updateData(lastCandle);
+      // Just stepped 1 tick (added 1 candle or updated the last one)
+      // This preserves the current right-offset/scroll position!
+      const lastCandle = chartData[chartData.length - 1];
+      chartRef.current.updateData(lastCandle);
     }
-    
+
     prevTimeframeRef.current = timeframe;
     prevDataLengthRef.current = chartData.length;
-    
+
   }, [aggregatedData, timeframe]);
 
   // Handle resize observer
@@ -132,19 +167,162 @@ export function TradingChart() {
     return () => resizeObserver.disconnect();
   }, []);
 
+  // Eliminar overlay con tecla Suprimir
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && chartRef.current) {
+        const idToDelete = selectedForDeleteRef.current;
+        if (idToDelete) {
+          chartRef.current.removeOverlay({ id: idToDelete });
+          selectedForDeleteRef.current = null;
+          // Si el popup de este overlay estaba abierto, cerrarlo
+          setSelectedOverlay(prev => prev?.id === idToDelete ? null : prev);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Manejador de dibujo libre (Lápiz)
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    let isDrawing = false;
+    let pencilOverlayId: string | null = null;
+    let currentPoints: any[] = [];
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (activeTool !== 'pencil' || !chartRef.current) return;
+
+      chartRef.current.setScrollEnabled(false);
+      isDrawing = true;
+
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const point = chartRef.current.convertFromPixel([{ x, y }], { paneId: 'candle_pane' })[0];
+      if (!point) return;
+      currentPoints = [point];
+
+      const rgba = hexToRgba(overlayColor, overlayOpacity);
+
+      pencilOverlayId = chartRef.current.createOverlay({
+        name: 'pencil',
+        groupId: 'drawing_group',
+        points: currentPoints,
+        styles: { line: { color: rgba, size: 2 } },
+        onSelected: (event) => {
+          selectedForDeleteRef.current = event.overlay.id;
+          return true;
+        },
+        onDeselected: (event) => {
+          if (selectedForDeleteRef.current === event.overlay.id) {
+             selectedForDeleteRef.current = null;
+          }
+          return true;
+        },
+        onDoubleClick: (event) => {
+          setSelectedOverlay(event.overlay);
+          return true;
+        }
+      }, 'candle_pane') as string;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDrawing || !pencilOverlayId || !chartRef.current) return;
+
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const point = chartRef.current.convertFromPixel([{ x, y }], { paneId: 'candle_pane' })[0];
+      if (!point) return;
+
+      currentPoints.push(point);
+
+      chartRef.current.overrideOverlay({
+        id: pencilOverlayId,
+        points: currentPoints
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (isDrawing && chartRef.current && pencilOverlayId) {
+        const overlay = chartRef.current.getOverlayById(pencilOverlayId);
+        if (overlay) {
+          setSelectedOverlay(overlay);
+          selectedForDeleteRef.current = overlay.id;
+        }
+        isDrawing = false;
+        pencilOverlayId = null;
+        currentPoints = [];
+        chartRef.current.setScrollEnabled(true);
+        setActiveTool(null);
+      }
+    };
+
+    container.addEventListener('mousedown', handleMouseDown);
+    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('mouseleave', handleMouseUp);
+
+    return () => {
+      container.removeEventListener('mousedown', handleMouseDown);
+      container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('mouseleave', handleMouseUp);
+    };
+  }, [activeTool, overlayColor, overlayOpacity]);
+
   const handleToolClick = (toolName: string) => {
     if (!chartRef.current) return;
-    
+
+    if (activeTool === toolName) {
+      setActiveTool(null);
+      return;
+    }
+
     setActiveTool(toolName);
+
+    if (toolName === 'pencil') return;
+
     chartRef.current.createOverlay({
       name: toolName,
       id: `overlay_${Date.now()}`,
       groupId: 'drawing_group',
+      onDrawEnd: (event) => {
+        setSelectedOverlay(event.overlay);
+        selectedForDeleteRef.current = event.overlay.id;
+        setActiveTool(null);
+        return true;
+      },
+      onSelected: (event) => {
+        selectedForDeleteRef.current = event.overlay.id;
+        return true;
+      },
+      onDeselected: (event) => {
+        if (selectedForDeleteRef.current === event.overlay.id) {
+            selectedForDeleteRef.current = null;
+        }
+        return true;
+      },
       onDoubleClick: (event) => {
         setSelectedOverlay(event.overlay);
-        // Intentar leer el color actual si existe (usando un color base para el picker)
-        setOverlayColor('#2196F3'); 
         return true;
+      }
+    });
+  };
+
+  const updateOverlayStyle = (color: string, opacity: number) => {
+    if (!selectedOverlay || !chartRef.current) return;
+    const rgba = hexToRgba(color, opacity);
+    chartRef.current.overrideOverlay({
+      id: selectedOverlay.id,
+      styles: {
+        line: { color: rgba },
+        polygon: { color: rgba, solid: true, borderSize: 1, borderColor: rgba }
       }
     });
   };
@@ -157,12 +335,15 @@ export function TradingChart() {
   };
 
   const toggleIndicator = (name: string) => {
+    const isOscillator = ['VOL', 'RSI', 'MACD'].includes(name);
+    const paneId = isOscillator ? `pane_${name}` : 'candle_pane';
+
     if (activeIndicators.includes(name)) {
-        chartRef.current?.removeIndicator('candle_pane', name);
-        setActiveIndicators(prev => prev.filter(i => i !== name));
+      chartRef.current?.removeIndicator(paneId, name);
+      setActiveIndicators(prev => prev.filter(i => i !== name));
     } else {
-        chartRef.current?.createIndicator({ name, calcParams: indicatorParams[name] }, false, { id: 'candle_pane' });
-        setActiveIndicators(prev => [...prev, name]);
+      chartRef.current?.createIndicator({ name, calcParams: indicatorParams[name] }, false, { id: paneId });
+      setActiveIndicators(prev => [...prev, name]);
     }
   };
 
@@ -171,7 +352,7 @@ export function TradingChart() {
     newParams[index] = value;
     setIndicatorParams(prev => ({ ...prev, [name]: newParams }));
     if (activeIndicators.includes(name)) {
-        chartRef.current?.overrideIndicator({ name, calcParams: newParams }, 'candle_pane');
+      chartRef.current?.overrideIndicator({ name, calcParams: newParams }, 'candle_pane');
     }
   };
 
@@ -179,7 +360,7 @@ export function TradingChart() {
     <div className="w-full h-full flex bg-dark-900 text-slate-300">
       {/* Sidebar Toolbar */}
       <div className="flex flex-col gap-2 p-2 border-r border-dark-700 bg-dark-800 shrink-0 relative">
-        <button 
+        <button
           onClick={() => setShowIndicatorsMenu(!showIndicatorsMenu)}
           className={`p-2 rounded transition-colors flex items-center justify-center ${showIndicatorsMenu || activeIndicators.length > 0 ? 'bg-primary-500/20 text-primary-500 border border-primary-500/30' : 'hover:bg-dark-700 text-slate-400 border border-transparent'}`}
           title="Indicadores"
@@ -187,26 +368,26 @@ export function TradingChart() {
           <span className="font-bold text-xs tracking-tighter">fx</span>
           <ChevronDown size={12} className="ml-0.5" />
         </button>
-        
+
         <div className="w-full h-px bg-dark-700 my-1"></div>
-        
-        <button 
+
+        <button
           onClick={() => handleToolClick('segment')}
           className={`p-2 rounded transition-colors ${activeTool === 'segment' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'hover:bg-dark-700 text-slate-400 border border-transparent'}`}
           title="Línea de Tendencia"
         >
           <Minus size={20} />
         </button>
-        
-        <button 
+
+        <button
           onClick={() => handleToolClick('rect')}
           className={`p-2 rounded transition-colors ${activeTool === 'rect' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'hover:bg-dark-700 text-slate-400 border border-transparent'}`}
           title="Rectángulo"
         >
           <Square size={20} />
         </button>
-        
-        <button 
+
+        <button
           onClick={() => handleToolClick('fibonacciLine')}
           className={`p-2 rounded transition-colors ${activeTool === 'fibonacciLine' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'hover:bg-dark-700 text-slate-400 border border-transparent'}`}
           title="Retroceso de Fibonacci"
@@ -214,8 +395,16 @@ export function TradingChart() {
           <TrendingUp size={20} />
         </button>
 
+        <button
+          onClick={() => handleToolClick('pencil')}
+          className={`p-2 rounded transition-colors ${activeTool === 'pencil' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'hover:bg-dark-700 text-slate-400 border border-transparent'}`}
+          title="Lápiz"
+        >
+          <Pen size={20} />
+        </button>
+
         <div className="mt-auto">
-          <button 
+          <button
             onClick={clearOverlays}
             className="p-2 rounded transition-colors hover:bg-danger/20 hover:text-danger hover:border-danger/30 border border-transparent text-slate-400"
             title="Limpiar Herramientas"
@@ -224,11 +413,11 @@ export function TradingChart() {
           </button>
         </div>
       </div>
-      
+
       {/* Chart Container */}
       <div className="flex-1 relative w-full h-full">
         <div id="kline-chart-container" className="absolute inset-0" ref={chartContainerRef} />
-        
+
         {/* Menu de Indicadores */}
         {showIndicatorsMenu && (
           <div className="absolute top-4 left-4 bg-dark-800 border border-dark-700 p-4 rounded shadow-2xl z-50 w-72 max-h-[80vh] overflow-y-auto">
@@ -245,7 +434,7 @@ export function TradingChart() {
                   <div key={ind} className="flex flex-col gap-2 p-2 border border-dark-700 rounded bg-dark-900/50">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-slate-300">{ind}</span>
-                      <button 
+                      <button
                         onClick={() => toggleIndicator(ind)}
                         className={`px-2 py-1 text-xs rounded transition-colors ${isActive ? 'bg-danger/20 text-danger border border-danger/30' : 'bg-primary-500/20 text-primary-500 border border-primary-500/30'}`}
                       >
@@ -256,7 +445,7 @@ export function TradingChart() {
                       <div className="flex gap-2 items-center flex-wrap mt-1">
                         <span className="text-xs text-slate-500">Params:</span>
                         {indicatorParams[ind].map((param, idx) => (
-                          <input 
+                          <input
                             key={idx}
                             type="number"
                             value={param}
@@ -276,44 +465,55 @@ export function TradingChart() {
         {/* Menu de Configuración de Overlay */}
         {selectedOverlay && (
           <div className="absolute top-4 right-4 bg-dark-800 border border-dark-700 p-4 rounded shadow-2xl z-50 w-64">
-             <div className="flex justify-between items-center mb-4">
-               <h3 className="text-sm font-semibold text-slate-200">Propiedades del Dibujo</h3>
-               <button onClick={() => setSelectedOverlay(null)} className="text-slate-400 hover:text-slate-200">
-                 <X size={16} />
-               </button>
-             </div>
-             
-             <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                   <label className="text-xs text-slate-400">Color</label>
-                   <input 
-                     type="color" 
-                     value={overlayColor}
-                     onChange={(e) => {
-                        const newColor = e.target.value;
-                        setOverlayColor(newColor);
-                        chartRef.current?.overrideOverlay({
-                           id: selectedOverlay.id,
-                           styles: {
-                              line: { color: newColor },
-                              polygon: { color: newColor, solid: false, borderSize: 1, borderColor: newColor }
-                           }
-                        });
-                     }}
-                     className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600"
-                   />
-                </div>
-                
-                <button 
-                   onClick={() => {
-                      chartRef.current?.removeOverlay({ id: selectedOverlay.id });
-                      setSelectedOverlay(null);
-                   }}
-                   className="mt-2 w-full py-1.5 bg-danger/20 text-danger border border-danger/30 rounded text-sm hover:bg-danger/30 transition-colors"
-                >
-                   Eliminar Dibujo
-                </button>
-             </div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm font-semibold text-slate-200">Propiedades del Dibujo</h3>
+              <button onClick={() => setSelectedOverlay(null)} className="text-slate-400 hover:text-slate-200">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-400">Color</label>
+                <input
+                  type="color"
+                  value={overlayColor}
+                  onChange={(e) => {
+                    const newColor = e.target.value;
+                    setOverlayColor(newColor);
+                    updateOverlayStyle(newColor, overlayOpacity);
+                  }}
+                  className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 mt-2">
+                <label className="text-xs text-slate-400">Opacidad ({Math.round(overlayOpacity * 100)}%)</label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.1"
+                  value={overlayOpacity}
+                  onChange={(e) => {
+                    const newOpacity = Number(e.target.value);
+                    setOverlayOpacity(newOpacity);
+                    updateOverlayStyle(overlayColor, newOpacity);
+                  }}
+                  className="w-full"
+                />
+              </div>
+
+              <button
+                onClick={() => {
+                  chartRef.current?.removeOverlay({ id: selectedOverlay.id });
+                  setSelectedOverlay(null);
+                }}
+                className="mt-2 w-full py-1.5 bg-danger/20 text-danger border border-danger/30 rounded text-sm hover:bg-danger/30 transition-colors"
+              >
+                Eliminar Dibujo
+              </button>
+            </div>
           </div>
         )}
       </div>
