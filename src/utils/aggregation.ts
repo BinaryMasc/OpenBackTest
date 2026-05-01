@@ -24,7 +24,7 @@ export function aggregateCandles(baseCandles: Candle[], targetTimeframe: Timefra
       }
       currentBucketTime = bucketTime;
       currentCandle = {
-        time: bucketTime as any, // Lightweight charts expects BusinessDay or UnixTimestamp, both are numbers/strings
+        time: bucketTime,
         open: candle.open,
         high: candle.high,
         low: candle.low,

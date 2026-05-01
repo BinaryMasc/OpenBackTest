@@ -53,7 +53,7 @@ export function Controls() {
     const parseLine = (line: string): Candle | null => {
       const values = line.split(',');
       const headerValues = headerLine.split(',');
-      const row: any = {};
+      const row: Record<string, string> = {};
       headerValues.forEach((h, i) => {
         row[h.trim()] = values[i]?.trim();
       });

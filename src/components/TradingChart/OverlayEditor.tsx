@@ -1,0 +1,89 @@
+import { X } from 'lucide-react';
+import type { Chart, Overlay } from 'klinecharts';
+import { hexToRgba } from '../../lib/chart/utils';
+
+interface OverlayEditorProps {
+  overlay: Overlay;
+  overlayColor: string;
+  overlayOpacity: number;
+  onColorChange: (color: string) => void;
+  onOpacityChange: (opacity: number) => void;
+  onRemove: () => void;
+  onClose: () => void;
+  chartRef: React.RefObject<Chart | null>;
+}
+
+export function OverlayEditor({
+  overlay,
+  overlayColor,
+  overlayOpacity,
+  onColorChange,
+  onOpacityChange,
+  onRemove,
+  onClose,
+  chartRef,
+}: OverlayEditorProps) {
+  const updateOverlayStyle = (color: string, opacity: number) => {
+    const chart = chartRef.current;
+    if (!chart || !overlay) return;
+    const rgba = hexToRgba(color, opacity);
+    chart.overrideOverlay({
+      id: overlay.id,
+      styles: {
+        line: { color: rgba },
+        polygon: { color: rgba, borderSize: 1, borderColor: rgba },
+      },
+    });
+  };
+
+  return (
+    <div className="absolute top-4 right-4 bg-dark-800 border border-dark-700 p-4 rounded shadow-2xl z-50 w-64">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-sm font-semibold text-slate-200">Object Properties</h3>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-slate-400">Color</label>
+          <input
+            type="color"
+            value={overlayColor}
+            onChange={e => {
+              const newColor = e.target.value;
+              onColorChange(newColor);
+              updateOverlayStyle(newColor, overlayOpacity);
+            }}
+            className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1 mt-2">
+          <label className="text-xs text-slate-400">Opacity ({Math.round(overlayOpacity * 100)}%)</label>
+          <input
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.1"
+            value={overlayOpacity}
+            onChange={e => {
+              const newOpacity = Number(e.target.value);
+              onOpacityChange(newOpacity);
+              updateOverlayStyle(overlayColor, newOpacity);
+            }}
+            className="w-full"
+          />
+        </div>
+
+        <button
+          onClick={onRemove}
+          className="mt-2 w-full py-1.5 bg-danger/20 text-danger border border-danger/30 rounded text-sm hover:bg-danger/30 transition-colors"
+        >
+          Remove Drawing
+        </button>
+      </div>
+    </div>
+  );
+}
