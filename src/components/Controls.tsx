@@ -39,9 +39,16 @@ export function Controls() {
     const fileText = await file.text();
     const lines = fileText.split('\n').filter(line => line.trim().length > 0);
     const headerLine = lines[0];
+    const headerValues = headerLine.split(',').map(h => h.trim());
     const dataLines = lines.slice(1);
     const parsedData: Candle[] = [];
     const chunkSize = Math.max(100, Math.floor(dataLines.length / 100));
+
+    let extractedSymbol = '';
+    if (headerValues.includes('symbol') && dataLines.length > 0) {
+      const symbolIndex = headerValues.indexOf('symbol');
+      extractedSymbol = dataLines[0].split(',')[symbolIndex]?.trim() || '';
+    }
 
     const parseLine = (line: string): Candle | null => {
       const values = line.split(',');
@@ -85,7 +92,7 @@ export function Controls() {
     
     if (parsedData.length > 0) {
       setUploadProgress(100);
-      loadData(parsedData);
+      loadData(parsedData, extractedSymbol || undefined);
     } else {
       setUploading(false);
       setUploadProgress(0);

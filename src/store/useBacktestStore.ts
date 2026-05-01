@@ -4,6 +4,7 @@ import type { Candle, Timeframe } from '../types';
 
 interface BacktestState {
   rawData: Candle[];
+  symbol: string;
   currentIndex: number;
   timeframe: Timeframe;
   isPlaying: boolean;
@@ -11,7 +12,7 @@ interface BacktestState {
   isUploading: boolean;
   uploadProgress: number; // 0-100
 
-  loadData: (data: Candle[]) => void;
+  loadData: (data: Candle[], symbol?: string) => void;
   setUploading: (uploading: boolean) => void;
   setUploadProgress: (progress: number) => void;
   stepForward: () => void;
@@ -24,6 +25,7 @@ interface BacktestState {
 
 export const useBacktestStore = create<BacktestState>((set, get) => ({
   rawData: [],
+  symbol: '',
   currentIndex: -1,
   timeframe: '1m',
   isPlaying: false,
@@ -31,8 +33,9 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   isUploading: false,
   uploadProgress: 0,
 
-  loadData: (data: Candle[]) => set({ 
+  loadData: (data: Candle[], symbol?: string) => set({ 
     rawData: data, 
+    symbol: symbol ?? '',
     currentIndex: Math.min(100, data.length - 1),
     isPlaying: false,
     isUploading: false,
