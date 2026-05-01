@@ -8,8 +8,12 @@ interface BacktestState {
   timeframe: Timeframe;
   isPlaying: boolean;
   playbackSpeed: number; // ms per tick
+  isUploading: boolean;
+  uploadProgress: number; // 0-100
 
   loadData: (data: Candle[]) => void;
+  setUploading: (uploading: boolean) => void;
+  setUploadProgress: (progress: number) => void;
   stepForward: () => void;
   stepBackward: () => void;
   setTimeframe: (tf: Timeframe) => void;
@@ -24,12 +28,19 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   timeframe: '1m',
   isPlaying: false,
   playbackSpeed: 500,
+  isUploading: false,
+  uploadProgress: 0,
 
   loadData: (data: Candle[]) => set({ 
     rawData: data, 
-    currentIndex: Math.min(100, data.length - 1), // Start with some initial history
-    isPlaying: false 
+    currentIndex: Math.min(100, data.length - 1),
+    isPlaying: false,
+    isUploading: false,
+    uploadProgress: 0
   }),
+
+  setUploading: (uploading: boolean) => set({ isUploading: uploading }),
+  setUploadProgress: (progress: number) => set({ uploadProgress: progress }),
 
   stepForward: () => set((state) => ({
     currentIndex: Math.min(state.currentIndex + 1, state.rawData.length - 1)

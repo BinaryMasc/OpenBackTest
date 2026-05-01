@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
-import Papa from 'papaparse';
-import { Play, Pause, StepForward, Upload } from 'lucide-react';
+import { Play, Pause, StepForward, Upload, Loader } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import type { Candle, Timeframe } from '../types';
 
@@ -8,8 +7,8 @@ const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
 export function Controls() {
   const { 
-    rawData, currentIndex, timeframe, isPlaying, playbackSpeed,
-    loadData, setTimeframe, togglePlayback, stepForward, setPlaybackSpeed 
+    rawData, currentIndex, timeframe, isPlaying, playbackSpeed, isUploading, uploadProgress,
+    loadData, setTimeframe, togglePlayback, stepForward, setPlaybackSpeed, setUploading, setUploadProgress 
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -30,59 +29,80 @@ export function Controls() {
     return () => clearInterval(interval);
   }, [isPlaying, playbackSpeed]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const parsedData: Candle[] = [];
-        
-        for (const row of results.data as any[]) {
-          // Parse values, assume datetime is in row.datetime or similar
-          // Our example CSV has: datetime,open,high,low,close,volume
-          const dtStr = row.datetime;
-          if (!dtStr) continue;
+    setUploading(true);
+    setUploadProgress(0);
 
-          // Replace space with T and append Z to make it strict UTC for correct unix timestamp
-          const isoString = dtStr.replace(' ', 'T') + 'Z';
-          const time = Math.floor(new Date(isoString).getTime() / 1000);
-          
-          if (isNaN(time)) continue;
+    const fileText = await file.text();
+    const lines = fileText.split('\n').filter(line => line.trim().length > 0);
+    const headerLine = lines[0];
+    const dataLines = lines.slice(1);
+    const parsedData: Candle[] = [];
+    const chunkSize = Math.max(100, Math.floor(dataLines.length / 100));
 
-          parsedData.push({
-            time,
-            open: parseFloat(row.open),
-            high: parseFloat(row.high),
-            low: parseFloat(row.low),
-            close: parseFloat(row.close),
-            volume: parseFloat(row.volume),
-          });
-        }
-        
-        // Sort just in case
-        parsedData.sort((a, b) => a.time - b.time);
-        
-        if (parsedData.length > 0) {
-          loadData(parsedData);
-        } else {
-          alert("Failed to parse CSV data. Make sure headers are: datetime,open,high,low,close,volume");
-        }
+    const parseLine = (line: string): Candle | null => {
+      const values = line.split(',');
+      const headerValues = headerLine.split(',');
+      const row: any = {};
+      headerValues.forEach((h, i) => {
+        row[h.trim()] = values[i]?.trim();
+      });
+
+      const dtStr = row.datetime;
+      if (!dtStr) return null;
+
+      const isoString = dtStr.replace(' ', 'T') + 'Z';
+      const time = Math.floor(new Date(isoString).getTime() / 1000);
+      if (isNaN(time)) return null;
+
+      return {
+        time,
+        open: parseFloat(row.open),
+        high: parseFloat(row.high),
+        low: parseFloat(row.low),
+        close: parseFloat(row.close),
+        volume: parseFloat(row.volume),
+      };
+    };
+
+    for (let i = 0; i < dataLines.length; i += chunkSize) {
+      const chunk = dataLines.slice(i, i + chunkSize);
+      for (const line of chunk) {
+        const candle = parseLine(line);
+        if (candle) parsedData.push(candle);
       }
-    });
+
+      const progress = Math.round(((i + chunk.length) / dataLines.length) * 100);
+      setUploadProgress(progress);
+      
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    parsedData.sort((a, b) => a.time - b.time);
+    
+    if (parsedData.length > 0) {
+      setUploadProgress(100);
+      loadData(parsedData);
+    } else {
+      setUploading(false);
+      setUploadProgress(0);
+      alert("Failed to parse CSV data. Make sure headers are: datetime,open,high,low,close,volume");
+    }
   };
 
   const loadDemoData = async () => {
     try {
+      setUploading(true);
       const response = await fetch('/data/btc_usdt_m1.csv');
       const csvText = await response.text();
       const file = new File([csvText], "btc_usdt_m1.csv", { type: "text/csv" });
       
-      // create a mock event
       handleFileUpload({ target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>);
     } catch (e) {
+      setUploading(false);
       console.error("Failed to load demo data", e);
     }
   };
@@ -111,19 +131,36 @@ export function Controls() {
         />
         <button 
           onClick={() => fileInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50"
+          disabled={isUploading}
+          className="w-full flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Upload size={18} />
-          Load CSV Data
+          {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
+          {isUploading ? 'Processing...' : 'Load CSV Data'}
         </button>
         <button 
           onClick={loadDemoData}
-          className="w-full flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-primary-400 py-2 rounded-lg transition-colors border border-primary-500/30 text-xs"
+          disabled={isUploading}
+          className="w-full flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-primary-400 py-2 rounded-lg transition-colors border border-primary-500/30 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Load Demo Data
+          {isUploading ? <Loader size={14} className="animate-spin" /> : null}
+          {isUploading ? 'Processing...' : 'Load Demo Data'}
         </button>
+        {isUploading && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400">Processing CSV...</span>
+              <span className="text-primary-400 font-mono">{uploadProgress}%</span>
+            </div>
+            <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
+              <div 
+                className="h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
         <div className="text-xs text-slate-500 mt-2">
-          {rawData.length > 0 ? `${rawData.length} candles loaded` : 'No data loaded'}
+          {!isUploading && (rawData.length > 0 ? `${rawData.length} candles loaded` : 'No data loaded')}
         </div>
       </div>
 
