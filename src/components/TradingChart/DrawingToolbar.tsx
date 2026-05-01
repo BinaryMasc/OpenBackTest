@@ -34,7 +34,7 @@ export function DrawingToolbar({
             ? 'bg-primary-500/20 text-primary-500 border border-primary-500/30'
             : 'hover:bg-dark-700 text-slate-400 border border-transparent'
         }`}
-        title="Indicadores"
+        title="Indicators"
       >
         <span className="font-bold text-xs tracking-tighter">fx</span>
         <ChevronDown size={12} className="ml-0.5" />
@@ -77,7 +77,7 @@ export function DrawingToolbar({
             ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
             : 'hover:bg-dark-700 text-slate-400 border border-transparent'
         }`}
-        title="Línea de Tendencia"
+        title="Trend Line"
       >
         <Minus size={20} />
       </button>
@@ -89,7 +89,7 @@ export function DrawingToolbar({
             ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
             : 'hover:bg-dark-700 text-slate-400 border border-transparent'
         }`}
-        title="Rectángulo"
+        title="Rectangle"
       >
         <Square size={20} />
       </button>
@@ -101,7 +101,7 @@ export function DrawingToolbar({
             ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
             : 'hover:bg-dark-700 text-slate-400 border border-transparent'
         }`}
-        title="Retroceso de Fibonacci"
+        title="Fibonacci Retracement"
       >
         <Rows4 size={20} />
       </button>
@@ -113,7 +113,7 @@ export function DrawingToolbar({
             ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
             : 'hover:bg-dark-700 text-slate-400 border border-transparent'
         }`}
-        title="Lápiz"
+        title="Pencil"
       >
         <Pen size={20} />
       </button>
@@ -122,7 +122,7 @@ export function DrawingToolbar({
         <button
           onClick={onClear}
           className="p-2 rounded transition-colors hover:bg-danger/20 hover:text-danger hover:border-danger/30 border border-transparent text-slate-400"
-          title="Limpiar Herramientas"
+          title="Clear Tools"
         >
           <Trash2 size={20} />
         </button>

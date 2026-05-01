@@ -194,7 +194,7 @@ export function Controls() {
           <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
           <input 
             type="range" 
-            min="50" max="2000" step="50"
+            min="10" max="2000" step="10"
             value={playbackSpeed}
             onChange={(e) => setPlaybackSpeed(parseInt(e.target.value))}
             className="w-full accent-primary-500"
