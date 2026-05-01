@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { Chart, Overlay } from 'klinecharts';
 import { hexToRgba } from '../../lib/chart/utils';
@@ -13,6 +14,10 @@ interface OverlayEditorProps {
   chartRef: React.RefObject<Chart | null>;
 }
 
+/**
+ * Properties popup for drawing objects (rectangles, lines, etc.).
+ * Closes when clicking outside.
+ */
 export function OverlayEditor({
   overlay,
   overlayColor,
@@ -23,6 +28,25 @@ export function OverlayEditor({
   onClose,
   chartRef,
 }: OverlayEditorProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    // Delay so the click/double-click that opened the panel doesn't close it
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handler);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handler);
+    };
+  }, [onClose]);
+
   const updateOverlayStyle = (color: string, opacity: number) => {
     const chart = chartRef.current;
     if (!chart || !overlay) return;
@@ -37,10 +61,13 @@ export function OverlayEditor({
   };
 
   return (
-    <div className="absolute top-4 right-4 bg-dark-800 border border-dark-700 p-4 rounded shadow-2xl z-50 w-64">
+    <div
+      ref={panelRef}
+      className="absolute top-4 right-4 bg-dark-800 border border-dark-700 rounded-lg p-4 shadow-2xl z-50 w-64"
+    >
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-sm font-semibold text-slate-200">Object Properties</h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 transition-colors">
           <X size={16} />
         </button>
       </div>
@@ -73,7 +100,7 @@ export function OverlayEditor({
               onOpacityChange(newOpacity);
               updateOverlayStyle(overlayColor, newOpacity);
             }}
-            className="w-full"
+            className="w-full accent-primary-500"
           />
         </div>
 

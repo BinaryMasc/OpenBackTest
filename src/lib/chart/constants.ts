@@ -8,12 +8,12 @@ export type IndicatorName = typeof INDICATORS_LIST[number];
 export const OSCILLATOR_INDICATORS = ['VOL', 'RSI', 'MACD'] as const;
 
 export const DEFAULT_INDICATOR_PARAMS: Record<string, number[]> = {
+  MA: [5, 10, 30, 60],
   SMA: [14],
   EMA: [14],
-  MA: [5, 10, 30, 60],
   MACD: [12, 26, 9],
-  VOL: [5, 10, 20],
-  RSI: [6, 12, 24],
+  VOL: [],
+  RSI: [14],
   BOLL: [20],
 };
 
