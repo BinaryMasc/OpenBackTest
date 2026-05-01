@@ -16,3 +16,15 @@ export const DEFAULT_INDICATOR_PARAMS: Record<string, number[]> = {
   RSI: [6, 12, 24],
   BOLL: [20],
 };
+
+/** Rotating palette for auto-assigning colors to new indicator instances */
+export const INDICATOR_DEFAULT_COLORS = [
+  '#2196F3', // blue
+  '#FF9800', // orange
+  '#4CAF50', // green
+  '#E91E63', // pink
+  '#9C27B0', // purple
+  '#00BCD4', // cyan
+  '#FFEB3B', // yellow
+  '#795548', // brown
+] as const;

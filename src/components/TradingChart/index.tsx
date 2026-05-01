@@ -10,6 +10,8 @@ import { DRAWING_GROUP_ID } from '../../lib/chart/constants';
 import { ChartContainer } from './ChartContainer';
 import { DrawingToolbar } from './DrawingToolbar';
 import { IndicatorMenu } from './IndicatorMenu';
+import { IndicatorProperties } from './IndicatorProperties';
+import { IndicatorLegend } from './IndicatorLegend';
 import { OverlayEditor } from './OverlayEditor';
 
 export function TradingChart() {
@@ -31,7 +33,7 @@ export function TradingChart() {
 
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();
 
-  const indicatorState = useIndicators(chartRef);
+  const indicators = useIndicators(chartRef);
 
   const handleOverlayCreated = useCallback((overlay: Overlay) => {
     recordAdd(overlay);
@@ -120,27 +122,42 @@ export function TradingChart() {
         onRedo={handleRedo}
         canUndo={canUndo}
         canRedo={canRedo}
-        showIndicatorsMenu={indicatorState.showIndicatorsMenu}
-        activeIndicators={indicatorState.activeIndicators}
+        showIndicatorsMenu={indicators.showAddMenu}
         onToggleIndicatorsMenu={() =>
-          indicatorState.setShowIndicatorsMenu(!indicatorState.showIndicatorsMenu)
+          indicators.setShowAddMenu(!indicators.showAddMenu)
         }
       />
 
       <div className="flex-1 relative w-full h-full">
         <ChartContainer containerRef={containerRef} />
 
-        {indicatorState.showIndicatorsMenu && (
+        {/* Top-left indicator legend (TradingView-style) */}
+        <IndicatorLegend
+          instances={indicators.instances}
+          onSelect={id => indicators.setEditingInstanceId(id)}
+          onRemove={indicators.removeIndicator}
+          onToggleVisibility={indicators.toggleVisibility}
+        />
+
+        {/* Add indicator dropdown */}
+        {indicators.showAddMenu && (
           <IndicatorMenu
-            indicatorsList={indicatorState.indicatorsList}
-            activeIndicators={indicatorState.activeIndicators}
-            indicatorParams={indicatorState.indicatorParams}
-            onClose={() => indicatorState.setShowIndicatorsMenu(false)}
-            onToggle={indicatorState.toggleIndicator}
-            onUpdateParam={indicatorState.updateIndicatorParam}
+            onAdd={indicators.addIndicator}
+            onClose={() => indicators.setShowAddMenu(false)}
           />
         )}
 
+        {/* Indicator properties popup */}
+        {indicators.editingInstance && (
+          <IndicatorProperties
+            instance={indicators.editingInstance}
+            onUpdate={indicators.updateInstance}
+            onRemove={indicators.removeIndicator}
+            onClose={() => indicators.setEditingInstanceId(null)}
+          />
+        )}
+
+        {/* Drawing overlay editor */}
         {selectedOverlay && (
           <OverlayEditor
             overlay={selectedOverlay}

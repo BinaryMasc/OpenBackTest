@@ -9,7 +9,6 @@ interface DrawingToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   showIndicatorsMenu: boolean;
-  activeIndicators: string[];
   onToggleIndicatorsMenu: () => void;
 }
 
@@ -22,10 +21,9 @@ export function DrawingToolbar({
   canUndo,
   canRedo,
   showIndicatorsMenu,
-  activeIndicators,
   onToggleIndicatorsMenu,
 }: DrawingToolbarProps) {
-  const indicatorBtnActive = showIndicatorsMenu || activeIndicators.length > 0;
+  const indicatorBtnActive = showIndicatorsMenu;
 
   return (
     <div className="flex flex-col gap-2 p-2 border-r border-dark-700 bg-dark-800 shrink-0 relative">
