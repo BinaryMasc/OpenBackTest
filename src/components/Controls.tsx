@@ -5,10 +5,16 @@ import type { Candle, Timeframe } from '../types';
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
+const PRESETS = [
+  /*{ name: 'BTC/USDT 1m (Demo)', filename: 'btc_usdt_m1.csv' },*/
+  { name: 'BTC/USDT 1m (2025-2026)', filename: 'btc_usdt_m1_jan2025-apr2026.csv' },
+  { name: 'ETH/USDT 1m (2025-2026)', filename: 'eth_usdt_m1_jan2025-apr2026.csv' },
+];
+
 export function Controls() {
-  const { 
+  const {
     rawData, currentIndex, timeframe, isPlaying, playbackSpeed, isUploading, uploadProgress,
-    loadData, setTimeframe, togglePlayback, stepForward, setPlaybackSpeed, setUploading, setUploadProgress 
+    loadData, setTimeframe, togglePlayback, stepForward, setPlaybackSpeed, setUploading, setUploadProgress
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -16,7 +22,7 @@ export function Controls() {
   // Auto-play logic
   useEffect(() => {
     if (!isPlaying) return;
-    
+
     const interval = setInterval(() => {
       // Check if we reached the end
       if (useBacktestStore.getState().currentIndex >= useBacktestStore.getState().rawData.length - 1) {
@@ -25,7 +31,7 @@ export function Controls() {
         useBacktestStore.getState().stepForward();
       }
     }, playbackSpeed);
-    
+
     return () => clearInterval(interval);
   }, [isPlaying, playbackSpeed]);
 
@@ -84,12 +90,12 @@ export function Controls() {
 
       const progress = Math.round(((i + chunk.length) / dataLines.length) * 100);
       setUploadProgress(progress);
-      
+
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     parsedData.sort((a, b) => a.time - b.time);
-    
+
     if (parsedData.length > 0) {
       setUploadProgress(100);
       loadData(parsedData, extractedSymbol || undefined);
@@ -100,23 +106,23 @@ export function Controls() {
     }
   };
 
-  const loadDemoData = async () => {
+  const loadPresetData = async (filename: string) => {
     try {
       setUploading(true);
-      const response = await fetch('/data/btc_usdt_m1.csv');
+      const response = await fetch(`/data/${filename}`);
       const csvText = await response.text();
-      const file = new File([csvText], "btc_usdt_m1.csv", { type: "text/csv" });
-      
+      const file = new File([csvText], filename, { type: "text/csv" });
+
       handleFileUpload({ target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>);
     } catch (e) {
       setUploading(false);
-      console.error("Failed to load demo data", e);
+      console.error(`Failed to load preset: ${filename}`, e);
     }
   };
 
   const currentCandle = rawData[currentIndex];
-  const currentDate = currentCandle 
-    ? new Date(currentCandle.time * 1000).toISOString().replace('T', ' ').substring(0, 19) 
+  const currentDate = currentCandle
+    ? new Date(currentCandle.time * 1000).toISOString().replace('T', ' ').substring(0, 19)
     : 'No Data';
 
   return (
@@ -129,14 +135,14 @@ export function Controls() {
       {/* Data Source */}
       <div className="mb-6 space-y-2">
         <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Data Source</h3>
-        <input 
-          type="file" 
-          accept=".csv" 
-          className="hidden" 
+        <input
+          type="file"
+          accept=".csv"
+          className="hidden"
           ref={fileInputRef}
           onChange={handleFileUpload}
         />
-        <button 
+        <button
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
           className="w-full flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -144,14 +150,26 @@ export function Controls() {
           {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
           {isUploading ? 'Processing...' : 'Load CSV Data'}
         </button>
-        <button 
-          onClick={loadDemoData}
-          disabled={isUploading}
-          className="w-full flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-primary-400 py-2 rounded-lg transition-colors border border-primary-500/30 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isUploading ? <Loader size={14} className="animate-spin" /> : null}
-          {isUploading ? 'Processing...' : 'Load Demo Data'}
-        </button>
+        <div className="pt-4">
+          <h4 className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-3">Preset Data Sets</h4>
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.filename}
+                onClick={() => loadPresetData(preset.filename)}
+                disabled={isUploading}
+                className="w-full flex items-center justify-between gap-2 hover:bg-dark-700/50 text-slate-400 hover:text-white py-2 px-3 rounded-lg transition-all text-left text-xs disabled:opacity-50 disabled:cursor-not-allowed group"
+              >
+                <span className="truncate">{preset.name}</span>
+                {isUploading ? (
+                  <Loader size={14} className="animate-spin text-primary-500" />
+                ) : (
+                  <StepForward size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-primary-500" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
         {isUploading && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs">
@@ -159,7 +177,7 @@ export function Controls() {
               <span className="text-primary-400 font-mono">{uploadProgress}%</span>
             </div>
             <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
-              <div 
+              <div
                 className="h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out"
                 style={{ width: `${uploadProgress}%` }}
               />
@@ -174,7 +192,7 @@ export function Controls() {
       {/* Controls */}
       <div className="mb-6 space-y-4">
         <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Settings</h3>
-        
+
         <div>
           <label className="block text-slate-300 text-xs mb-1">Timeframe</label>
           <div className="grid grid-cols-3 gap-2">
@@ -192,8 +210,8 @@ export function Controls() {
 
         <div>
           <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
-          <input 
-            type="range" 
+          <input
+            type="range"
             min="10" max="2000" step="10"
             value={playbackSpeed}
             onChange={(e) => setPlaybackSpeed(parseInt(e.target.value))}
@@ -211,7 +229,7 @@ export function Controls() {
         </div>
 
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={togglePlayback}
             disabled={rawData.length === 0}
             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-medium transition-all ${isPlaying ? 'bg-danger/20 text-danger border border-danger/50' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500/30'}`}
@@ -219,8 +237,8 @@ export function Controls() {
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
             {isPlaying ? 'Pause' : 'Play'}
           </button>
-          
-          <button 
+
+          <button
             onClick={stepForward}
             disabled={rawData.length === 0 || isPlaying}
             className="flex-1 flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
