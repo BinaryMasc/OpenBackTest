@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { init, dispose, type Chart } from 'klinecharts';
+import { init, dispose, type Chart, TooltipShowRule } from 'klinecharts';
 import type { Candle, Timeframe } from '../types';
 import { CHART_CONTAINER_ID } from '../lib/chart/constants';
 import { registerCustomOverlays } from '../lib/chart/overlays';
@@ -22,6 +22,13 @@ export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
     if (chart) {
       chartRef.current = chart;
       chart.setStyles('dark');
+      chart.setStyles({
+        indicator: {
+          tooltip: {
+            showRule: TooltipShowRule.None,
+          },
+        },
+      });
     }
     return () => {
       dispose(CHART_CONTAINER_ID);

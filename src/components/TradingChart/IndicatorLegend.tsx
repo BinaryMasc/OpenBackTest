@@ -22,7 +22,7 @@ export function IndicatorLegend({
   if (instances.length === 0) return null;
 
   return (
-    <div className="absolute top-2 left-2 z-40 flex flex-col gap-1 pointer-events-auto max-w-[280px]">
+    <div className="absolute top-8 left-2 z-40 flex flex-col gap-1 pointer-events-auto max-w-[280px]">
       {instances.map(inst => (
         <div
           key={inst.id}
