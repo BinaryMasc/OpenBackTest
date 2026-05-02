@@ -1,24 +1,6 @@
 import { registerOverlay } from 'klinecharts';
 import type { OverlayFigure, OverlayCreateFiguresCallbackParams } from 'klinecharts';
 
-const textContentMap = new Map<string, string>();
-
-export function setTextContent(overlayId: string, content: string): void {
-  textContentMap.set(overlayId, content);
-}
-
-export function getTextContent(overlayId: string): string {
-  return textContentMap.get(overlayId) ?? 'Text';
-}
-
-export function removeTextContent(overlayId: string): void {
-  textContentMap.delete(overlayId);
-}
-
-export function clearAllTextContent(): void {
-  textContentMap.clear();
-}
-
 export function registerCustomOverlays(): void {
   registerOverlay({
     name: 'rect',
@@ -145,13 +127,13 @@ export function registerCustomOverlays(): void {
 
   registerOverlay({
     name: 'text',
-    totalStep: 2,
+    totalStep: 1,
     needDefaultPointFigure: true,
     needDefaultXAxisFigure: false,
     needDefaultYAxisFigure: false,
     createPointFigures: ({ coordinates, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
       if (coordinates.length < 1) return [];
-      const content = getTextContent(overlay.id);
+      const content = (overlay.extendData as string) ?? 'Text';
       const overlayStyles = overlay.styles as Record<string, unknown> | undefined;
       const textStyle = overlayStyles?.text as Record<string, string> | undefined;
       const color = textStyle?.color ?? '#ffffff';
@@ -166,7 +148,7 @@ export function registerCustomOverlays(): void {
             align: 'left',
             baseline: 'top',
           },
-          styles: { color, size },
+          styles: { color, size, backgroundColor: 'transparent' },
         },
       ];
     },

@@ -7,7 +7,6 @@ import { useDrawingTools } from '../../hooks/useDrawingTools';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
 import { useIndicators } from '../../hooks/useIndicators';
 import { DRAWING_GROUP_ID } from '../../lib/chart/constants';
-import { clearAllTextContent, removeTextContent } from '../../lib/chart/overlays';
 import { ChartContainer } from './ChartContainer';
 import { DrawingToolbar } from './DrawingToolbar';
 import { IndicatorMenu } from './IndicatorMenu';
@@ -31,6 +30,7 @@ export function TradingChart() {
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
   const [overlayColor, setOverlayColor] = useState('#2196F3');
   const [overlayOpacity, setOverlayOpacity] = useState(0.5);
+  const [overlayFontSize, setOverlayFontSize] = useState(12);
 
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();
 
@@ -49,12 +49,12 @@ export function TradingChart() {
     containerRef,
     overlayColor,
     overlayOpacity,
+    overlayFontSize,
     onOverlayCreated: handleOverlayCreated,
     onOverlaySelected: handleOverlaySelected,
   });
 
   const clearOverlays = useCallback(() => {
-    clearAllTextContent();
     chartRef.current?.removeOverlay({ groupId: DRAWING_GROUP_ID });
     setSelectedOverlay(null);
   }, [chartRef]);
@@ -65,7 +65,6 @@ export function TradingChart() {
     const overlay = chart.getOverlayById(selectedOverlay.id);
     if (overlay) {
       recordRemove(overlay);
-      removeTextContent(selectedOverlay.id);
       chart.removeOverlay({ id: selectedOverlay.id });
     }
     setSelectedOverlay(null);
@@ -98,7 +97,7 @@ export function TradingChart() {
         redo(chart, overlay => {
           setSelectedOverlay(overlay);
         });
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && chart) {
+      } else if ((e.key === 'Delete') && chart) {
         const idToDelete = selectedForDeleteRef.current;
         if (idToDelete) {
           const overlay = chart.getOverlayById(idToDelete);
@@ -166,11 +165,15 @@ export function TradingChart() {
             overlay={selectedOverlay}
             overlayColor={overlayColor}
             overlayOpacity={overlayOpacity}
+            overlayFontSize={overlayFontSize}
             onColorChange={color => {
               setOverlayColor(color);
             }}
             onOpacityChange={opacity => {
               setOverlayOpacity(opacity);
+            }}
+            onFontSizeChange={size => {
+              setOverlayFontSize(size);
             }}
             onRemove={handleOverlayRemove}
             onClose={() => setSelectedOverlay(null)}

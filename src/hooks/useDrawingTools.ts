@@ -2,13 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chart, Overlay, Point, OverlayCreate } from 'klinecharts';
 import { DRAWING_GROUP_ID } from '../lib/chart/constants';
 import { hexToRgba } from '../lib/chart/utils';
-import { setTextContent } from '../lib/chart/overlays';
 
 interface UseDrawingToolsOptions {
   chartRef: React.RefObject<Chart | null>;
   containerRef: React.RefObject<HTMLDivElement | null>;
   overlayColor: string;
   overlayOpacity: number;
+  overlayFontSize: number;
   onOverlayCreated: (overlay: Overlay) => void;
   onOverlaySelected: (overlay: Overlay | null) => void;
 }
@@ -18,6 +18,7 @@ export function useDrawingTools({
   containerRef,
   overlayColor,
   overlayOpacity,
+  overlayFontSize,
   onOverlayCreated,
   onOverlaySelected,
 }: UseDrawingToolsOptions) {
@@ -42,11 +43,12 @@ export function useDrawingTools({
       name: toolName,
       id: overlayId,
       groupId: DRAWING_GROUP_ID,
+      extendData: toolName === 'text' ? 'Text' : undefined,
       styles: {
         line: { color: rgba },
         polygon: { color: rgba, borderSize: 1, borderColor: rgba },
         circle: { color: rgba },
-        text: toolName === 'text' ? { color: overlayColor, size: 12 } : undefined,
+        text: toolName === 'text' ? { color: overlayColor, size: overlayFontSize } : undefined,
       },
       onDrawEnd: (event: { overlay: Overlay }) => {
         onOverlaySelected(event.overlay);
@@ -71,11 +73,8 @@ export function useDrawingTools({
       },
     };
 
-    if (toolName === 'text') {
-      setTextContent(overlayId, 'Text');
-    }
     chart.createOverlay(config);
-  }, [activeTool, chartRef, overlayColor, overlayOpacity, onOverlaySelected, onOverlayCreated]);
+  }, [activeTool, chartRef, overlayColor, overlayOpacity, overlayFontSize, onOverlaySelected, onOverlayCreated]);
 
   useEffect(() => {
     const container = containerRef.current;
