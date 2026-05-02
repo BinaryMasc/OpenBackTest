@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
+
 import type { Chart } from 'klinecharts';
+import { LineType } from 'klinecharts';
 import type { IndicatorInstance } from '../types/indicatorTypes';
 import {
   DEFAULT_INDICATOR_PARAMS,
@@ -56,7 +58,8 @@ export function useIndicators(chartRef: React.RefObject<Chart | null>) {
       const lineStyles = visible.flatMap(inst =>
         inst.calcParams.map(() => ({
           size: 2,
-          style: 'solid' as const,
+          style: LineType.Solid,
+          smooth: false,
           dashedValue: [2, 2],
           color: hexToRgba(inst.color, inst.opacity),
         })),
@@ -102,7 +105,7 @@ export function useIndicators(chartRef: React.RefObject<Chart | null>) {
         const rgba = hexToRgba(color, 1);
         requestAnimationFrame(() => {
           chartRef.current?.overrideIndicator(
-            { name, styles: { lines: [{ size: 2, style: 'solid' as const, dashedValue: [2, 2], color: rgba }] } },
+            { name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
             paneId,
           );
         });
@@ -116,7 +119,7 @@ export function useIndicators(chartRef: React.RefObject<Chart | null>) {
         const rgba = hexToRgba(color, 1);
         requestAnimationFrame(() => {
           chartRef.current?.overrideIndicator(
-            { name, styles: { lines: [{ size: 2, style: 'solid' as const, dashedValue: [2, 2], color: rgba }] } },
+            { name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
             'candle_pane',
           );
         });
@@ -200,7 +203,7 @@ export function useIndicators(chartRef: React.RefObject<Chart | null>) {
         if (changes.color !== undefined || changes.opacity !== undefined) {
           const rgba = hexToRgba(updated.color, updated.opacity);
           chart.overrideIndicator(
-            { name: updated.name, styles: { lines: [{ size: 2, style: 'solid' as const, dashedValue: [2, 2], color: rgba }] } },
+            { name: updated.name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
             updated.paneId,
           );
         }
@@ -215,7 +218,7 @@ export function useIndicators(chartRef: React.RefObject<Chart | null>) {
         if (changes.color !== undefined || changes.opacity !== undefined) {
           const rgba = hexToRgba(updated.color, updated.opacity);
           chart.overrideIndicator(
-            { name: updated.name, styles: { lines: [{ size: 2, style: 'solid' as const, dashedValue: [2, 2], color: rgba }] } },
+            { name: updated.name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
             'candle_pane',
           );
         }

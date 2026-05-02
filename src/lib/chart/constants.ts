@@ -2,7 +2,9 @@ export const CHART_CONTAINER_ID = 'kline-chart-container';
 export const DRAWING_GROUP_ID = 'drawing_group';
 export const CANDLE_PANE_ID = 'candle_pane';
 
-export const INDICATORS_LIST = ['MA', 'EMA', 'SMA', 'MACD', 'VOL', 'RSI', 'BOLL'] as const;
+// ToDo: Disabled Bollinger Bands (BOLL) and SMA for now
+//export const INDICATORS_LIST = ['MA', 'EMA', 'SMA', 'MACD', 'VOL', 'RSI', 'BOLL'] as const;
+export const INDICATORS_LIST = ['MA', 'EMA', 'MACD', 'VOL', 'RSI'] as const;
 export type IndicatorName = typeof INDICATORS_LIST[number];
 
 export const OSCILLATOR_INDICATORS = ['VOL', 'RSI', 'MACD'] as const;
