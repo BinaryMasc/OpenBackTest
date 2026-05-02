@@ -15,7 +15,7 @@ const PRESETS = [
 export function Controls() {
   const {
     rawData, currentIndex, timeframe, isPlaying, playbackSpeed, isUploading, uploadProgress, mode,
-    loadData, setTimeframe, togglePlayback, stepForward, setPlaybackSpeed, setUploading, setUploadProgress, setMode
+    loadData, setTimeframe, setPlaybackSpeed, setUploading, setUploadProgress, setMode
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
