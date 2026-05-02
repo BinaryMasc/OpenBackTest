@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chart, Overlay, Point, OverlayCreate } from 'klinecharts';
 import { DRAWING_GROUP_ID } from '../lib/chart/constants';
 import { hexToRgba } from '../lib/chart/utils';
+import { setTextContent } from '../lib/chart/overlays';
 
 interface UseDrawingToolsOptions {
   chartRef: React.RefObject<Chart | null>;
@@ -36,14 +37,16 @@ export function useDrawingTools({
     if (toolName === 'pencil') return;
 
     const rgba = hexToRgba(overlayColor, overlayOpacity);
+    const overlayId = `overlay_${Date.now()}`;
     const config: OverlayCreate = {
       name: toolName,
-      id: `overlay_${Date.now()}`,
+      id: overlayId,
       groupId: DRAWING_GROUP_ID,
       styles: {
         line: { color: rgba },
         polygon: { color: rgba, borderSize: 1, borderColor: rgba },
         circle: { color: rgba },
+        text: toolName === 'text' ? { color: overlayColor, size: 12 } : undefined,
       },
       onDrawEnd: (event: { overlay: Overlay }) => {
         onOverlaySelected(event.overlay);
@@ -68,6 +71,9 @@ export function useDrawingTools({
       },
     };
 
+    if (toolName === 'text') {
+      setTextContent(overlayId, 'Text');
+    }
     chart.createOverlay(config);
   }, [activeTool, chartRef, overlayColor, overlayOpacity, onOverlaySelected, onOverlayCreated]);
 

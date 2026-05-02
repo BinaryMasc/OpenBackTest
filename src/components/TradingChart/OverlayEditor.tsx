@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { Chart, Overlay } from 'klinecharts';
 import { hexToRgba } from '../../lib/chart/utils';
+import { getTextContent, setTextContent } from '../../lib/chart/overlays';
 
 interface OverlayEditorProps {
   overlay: Overlay;
@@ -51,13 +52,17 @@ export function OverlayEditor({
     const chart = chartRef.current;
     if (!chart || !overlay) return;
     const rgba = hexToRgba(color, opacity);
+    const styles: Record<string, unknown> = {
+      line: { color: rgba },
+      polygon: { color: rgba, borderSize: 1, borderColor: rgba },
+      circle: { color: rgba },
+    };
+    if (overlay.name === 'text') {
+      styles.text = { color, size: 12 };
+    }
     chart.overrideOverlay({
       id: overlay.id,
-      styles: {
-        line: { color: rgba },
-        polygon: { color: rgba, borderSize: 1, borderColor: rgba },
-        circle: { color: rgba },
-      },
+      styles,
     });
   };
 
@@ -104,6 +109,28 @@ export function OverlayEditor({
             className="w-full accent-primary-500"
           />
         </div>
+
+        {overlay.name === 'text' && (
+          <div className="flex flex-col gap-1 mt-2">
+            <label className="text-xs text-slate-400">Text Content</label>
+            <input
+              type="text"
+              value={getTextContent(overlay.id)}
+              onChange={e => {
+                const chart = chartRef.current;
+                if (!chart) return;
+                setTextContent(overlay.id, e.target.value);
+                chart.overrideOverlay({
+                  id: overlay.id,
+                  styles: {
+                    text: { color: overlayColor, size: 12 },
+                  },
+                });
+              }}
+              className="w-full px-2 py-1 bg-dark-700 border border-dark-600 rounded text-sm text-slate-200 focus:outline-none focus:border-primary-500"
+            />
+          </div>
+        )}
 
         <button
           onClick={onRemove}

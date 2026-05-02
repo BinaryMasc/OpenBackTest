@@ -1,6 +1,24 @@
 import { registerOverlay } from 'klinecharts';
 import type { OverlayFigure, OverlayCreateFiguresCallbackParams } from 'klinecharts';
 
+const textContentMap = new Map<string, string>();
+
+export function setTextContent(overlayId: string, content: string): void {
+  textContentMap.set(overlayId, content);
+}
+
+export function getTextContent(overlayId: string): string {
+  return textContentMap.get(overlayId) ?? 'Text';
+}
+
+export function removeTextContent(overlayId: string): void {
+  textContentMap.delete(overlayId);
+}
+
+export function clearAllTextContent(): void {
+  textContentMap.clear();
+}
+
 export function registerCustomOverlays(): void {
   registerOverlay({
     name: 'rect',
@@ -120,6 +138,35 @@ export function registerCustomOverlays(): void {
           type: 'circle',
           attrs: { x: cx, y: cy, r },
           styles: { color, style: 'stroke_fill' },
+        },
+      ];
+    },
+  });
+
+  registerOverlay({
+    name: 'text',
+    totalStep: 2,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length < 1) return [];
+      const content = getTextContent(overlay.id);
+      const overlayStyles = overlay.styles as Record<string, unknown> | undefined;
+      const textStyle = overlayStyles?.text as Record<string, string> | undefined;
+      const color = textStyle?.color ?? '#ffffff';
+      const size = textStyle?.size ?? 12;
+      return [
+        {
+          type: 'text',
+          attrs: {
+            x: coordinates[0].x,
+            y: coordinates[0].y,
+            text: content,
+            align: 'left',
+            baseline: 'top',
+          },
+          styles: { color, size },
         },
       ];
     },

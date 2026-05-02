@@ -1,4 +1,4 @@
-import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle } from 'lucide-react';
+import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle, ChartLine } from 'lucide-react';
 
 interface DrawingToolbarProps {
   activeTool: string | null;
@@ -79,7 +79,7 @@ export function DrawingToolbar({
         }`}
         title="Trend Line"
       >
-        <Minus size={20} />
+        <ChartLine size={20} />
       </button>
 
       <button
@@ -152,6 +152,18 @@ export function DrawingToolbar({
         title="Vertical Line"
       >
         <Minus size={20} style={{ transform: 'rotate(90deg)' }} />
+      </button>
+
+      <button
+        onClick={() => onToolClick('text')}
+        className={`p-2 rounded transition-colors font-bold text-xs ${
+          activeTool === 'text'
+            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+            : 'hover:bg-dark-700 text-slate-400 border border-transparent'
+        }`}
+        title="Text"
+      >
+        T
       </button>
 
       <div className="mt-auto">

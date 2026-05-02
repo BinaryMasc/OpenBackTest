@@ -7,6 +7,7 @@ import { useDrawingTools } from '../../hooks/useDrawingTools';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
 import { useIndicators } from '../../hooks/useIndicators';
 import { DRAWING_GROUP_ID } from '../../lib/chart/constants';
+import { clearAllTextContent, removeTextContent } from '../../lib/chart/overlays';
 import { ChartContainer } from './ChartContainer';
 import { DrawingToolbar } from './DrawingToolbar';
 import { IndicatorMenu } from './IndicatorMenu';
@@ -53,6 +54,7 @@ export function TradingChart() {
   });
 
   const clearOverlays = useCallback(() => {
+    clearAllTextContent();
     chartRef.current?.removeOverlay({ groupId: DRAWING_GROUP_ID });
     setSelectedOverlay(null);
   }, [chartRef]);
@@ -63,6 +65,7 @@ export function TradingChart() {
     const overlay = chart.getOverlayById(selectedOverlay.id);
     if (overlay) {
       recordRemove(overlay);
+      removeTextContent(selectedOverlay.id);
       chart.removeOverlay({ id: selectedOverlay.id });
     }
     setSelectedOverlay(null);
