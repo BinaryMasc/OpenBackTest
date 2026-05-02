@@ -95,7 +95,33 @@ export function registerCustomOverlays(): void {
         });
       }
 
-      return figures;
+       return figures;
+    },
+  });
+
+  registerOverlay({
+    name: 'circle',
+    totalStep: 3,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: true,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length < 2) return [];
+      const cx = coordinates[0].x;
+      const cy = coordinates[0].y;
+      const dx = coordinates[1].x - cx;
+      const dy = coordinates[1].y - cy;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const overlayStyles = overlay.styles as Record<string, unknown> | undefined;
+      const circleObj = overlayStyles?.circle as Record<string, string> | undefined;
+      const color = circleObj?.color ?? 'rgba(33, 150, 243, 0.5)';
+      return [
+        {
+          type: 'circle',
+          attrs: { x: cx, y: cy, r },
+          styles: { color, style: 'stroke_fill' },
+        },
+      ];
     },
   });
 }

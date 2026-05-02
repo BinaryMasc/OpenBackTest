@@ -1,4 +1,4 @@
-import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2 } from 'lucide-react';
+import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle } from 'lucide-react';
 
 interface DrawingToolbarProps {
   activeTool: string | null;
@@ -116,6 +116,42 @@ export function DrawingToolbar({
         title="Pencil"
       >
         <Pen size={20} />
+      </button>
+
+      <button
+        onClick={() => onToolClick('circle')}
+        className={`p-2 rounded transition-colors ${
+          activeTool === 'circle'
+            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+            : 'hover:bg-dark-700 text-slate-400 border border-transparent'
+        }`}
+        title="Circle"
+      >
+        <Circle size={20} />
+      </button>
+
+      <button
+        onClick={() => onToolClick('horizontalStraightLine')}
+        className={`p-2 rounded transition-colors ${
+          activeTool === 'horizontalStraightLine'
+            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+            : 'hover:bg-dark-700 text-slate-400 border border-transparent'
+        }`}
+        title="Horizontal Line"
+      >
+        <Minus size={20} />
+      </button>
+
+      <button
+        onClick={() => onToolClick('verticalStraightLine')}
+        className={`p-2 rounded transition-colors ${
+          activeTool === 'verticalStraightLine'
+            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+            : 'hover:bg-dark-700 text-slate-400 border border-transparent'
+        }`}
+        title="Vertical Line"
+      >
+        <Minus size={20} style={{ transform: 'rotate(90deg)' }} />
       </button>
 
       <div className="mt-auto">

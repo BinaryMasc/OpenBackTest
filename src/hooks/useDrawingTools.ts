@@ -35,10 +35,16 @@ export function useDrawingTools({
     setActiveTool(toolName);
     if (toolName === 'pencil') return;
 
+    const rgba = hexToRgba(overlayColor, overlayOpacity);
     const config: OverlayCreate = {
       name: toolName,
       id: `overlay_${Date.now()}`,
       groupId: DRAWING_GROUP_ID,
+      styles: {
+        line: { color: rgba },
+        polygon: { color: rgba, borderSize: 1, borderColor: rgba },
+        circle: { color: rgba },
+      },
       onDrawEnd: (event: { overlay: Overlay }) => {
         onOverlaySelected(event.overlay);
         selectedForDeleteRef.current = event.overlay.id;
@@ -63,7 +69,7 @@ export function useDrawingTools({
     };
 
     chart.createOverlay(config);
-  }, [activeTool, chartRef, onOverlaySelected, onOverlayCreated]);
+  }, [activeTool, chartRef, overlayColor, overlayOpacity, onOverlaySelected, onOverlayCreated]);
 
   useEffect(() => {
     const container = containerRef.current;

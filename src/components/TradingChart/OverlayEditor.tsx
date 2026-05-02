@@ -56,6 +56,7 @@ export function OverlayEditor({
       styles: {
         line: { color: rgba },
         polygon: { color: rgba, borderSize: 1, borderColor: rgba },
+        circle: { color: rgba },
       },
     });
   };
