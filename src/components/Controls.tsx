@@ -1,7 +1,8 @@
 import { useRef, useEffect } from 'react';
-import { Play, Pause, StepForward, Upload, Loader } from 'lucide-react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import type { Candle, Timeframe } from '../types';
+import { PlaybackBar } from './PlaybackBar';
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
@@ -13,8 +14,8 @@ const PRESETS = [
 
 export function Controls() {
   const {
-    rawData, currentIndex, timeframe, isPlaying, playbackSpeed, isUploading, uploadProgress,
-    loadData, setTimeframe, togglePlayback, stepForward, setPlaybackSpeed, setUploading, setUploadProgress
+    rawData, currentIndex, timeframe, isPlaying, playbackSpeed, isUploading, uploadProgress, mode,
+    loadData, setTimeframe, togglePlayback, stepForward, setPlaybackSpeed, setUploading, setUploadProgress, setMode
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -132,6 +133,33 @@ export function Controls() {
         <p className="text-slate-400 text-xs">Manual Strategy Tester</p>
       </div>
 
+      {/* Mode Selector */}
+      <div className="mb-6 space-y-2">
+        <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Mode</h3>
+        <div className="flex bg-dark-900 p-1 rounded-xl border border-dark-700">
+          <button
+            onClick={() => setMode('playback')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'playback'
+              ? 'bg-primary-500 text-white shadow-lg'
+              : 'text-slate-400 hover:text-slate-200'
+              }`}
+          >
+            <PlayCircle size={14} />
+            Playback
+          </button>
+          <button
+            onClick={() => setMode('simulation')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'simulation'
+              ? 'bg-emerald-600 text-white shadow-lg'
+              : 'text-slate-400 hover:text-slate-200'
+              }`}
+          >
+            <TrendingUp size={14} />
+            Simulation
+          </button>
+        </div>
+      </div>
+
       {/* Data Source */}
       <div className="mb-6 space-y-2">
         <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Data Source</h3>
@@ -219,6 +247,14 @@ export function Controls() {
           />
           <div className="text-right text-xs text-slate-400">{playbackSpeed}ms</div>
         </div>
+
+        {/* Playback Bar (Conditional) */}
+        {mode === 'playback' && (
+          <div className="pt-4 border-t border-dark-700/50">
+            <h4 className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-3">Playback Controls</h4>
+            <PlaybackBar />
+          </div>
+        )}
       </div>
 
       {/* Playback */}
@@ -228,25 +264,6 @@ export function Controls() {
           <div className="font-mono text-emerald-400">{currentDate}</div>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={togglePlayback}
-            disabled={rawData.length === 0}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-medium transition-all ${isPlaying ? 'bg-danger/20 text-danger border border-danger/50' : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500/30'}`}
-          >
-            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-            {isPlaying ? 'Pause' : 'Play'}
-          </button>
-
-          <button
-            onClick={stepForward}
-            disabled={rawData.length === 0 || isPlaying}
-            className="flex-1 flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <StepForward size={18} />
-            Step
-          </button>
-        </div>
       </div>
     </div>
   );

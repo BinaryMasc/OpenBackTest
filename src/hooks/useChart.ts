@@ -50,10 +50,12 @@ export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
     const dataList = chartRef.current.getDataList();
     const isNewTimeframe = timeframe !== prevTimeframeRef.current;
 
+    // Fix: If data length decreased (stepping backward), we must use applyNewData
     if (
       dataList.length === 0 ||
       isNewTimeframe ||
-      Math.abs(chartData.length - prevDataLengthRef.current) > 1
+      chartData.length < prevDataLengthRef.current ||
+      chartData.length - prevDataLengthRef.current > 1
     ) {
       chartRef.current.applyNewData(chartData);
       if (isNewTimeframe) chartRef.current.resize();
