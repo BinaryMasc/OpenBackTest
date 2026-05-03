@@ -133,7 +133,7 @@ export function TradingChart() {
       <div className="flex-1 relative w-full h-full">
         <ChartContainer containerRef={containerRef} />
 
-        {/* Top-left indicator legend (TradingView-style) */}
+        {/* Top-left indicator legend */}
         <IndicatorLegend
           instances={indicators.instances}
           onSelect={id => indicators.setEditingInstanceId(id)}

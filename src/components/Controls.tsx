@@ -220,7 +220,7 @@ export function Controls() {
       {/* Controls */}
       <div className="mb-6 space-y-4">
         <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Settings</h3>
-
+        {/* 
         <div>
           <label className="block text-slate-300 text-xs mb-1">Timeframe</label>
           <div className="grid grid-cols-3 gap-2">
@@ -234,7 +234,7 @@ export function Controls() {
               </button>
             ))}
           </div>
-        </div>
+        </div> */}
 
         <div>
           <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
@@ -264,16 +264,15 @@ export function Controls() {
               <button
                 onClick={togglePlayback}
                 disabled={rawData.length === 0}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                  isPlaying 
-                    ? 'bg-danger/20 text-danger border border-danger/50' 
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium transition-all ${isPlaying
+                    ? 'bg-danger/20 text-danger border border-danger/50'
                     : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500/30'
-                }`}
+                  }`}
               >
                 {isPlaying ? <Pause size={16} /> : <Play size={16} />}
                 {isPlaying ? 'Pause' : 'Play'}
               </button>
-              
+
               <button
                 onClick={stepForward}
                 disabled={rawData.length === 0 || isPlaying}
