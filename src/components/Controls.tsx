@@ -161,72 +161,76 @@ export function Controls() {
       </div>
 
       {/* Data Source */}
-      <div className="mb-6 space-y-2">
-        <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Data Source</h3>
-        <input
-          type="file"
-          accept=".csv"
-          className="hidden"
-          ref={fileInputRef}
-          onChange={handleFileUpload}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-          className="w-full flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
-          {isUploading ? 'Processing...' : 'Load CSV Data'}
-        </button>
-        <div className="pt-4">
-          <button
-            onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
-            className="w-full flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-widest mb-3 hover:text-slate-300 transition-colors group"
-          >
-            Preset Data Sets
-            <ChevronDown
-              size={14}
-              className={`transition-transform duration-200 ${isPresetsExpanded ? '' : '-rotate-90'}`}
+      {
+        !(mode === 'simulation' && rawData.length > 0) && (
+          <div className="mb-6 space-y-2">
+            <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Data Source</h3>
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
             />
-          </button>
-          {isPresetsExpanded && (
-            <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.filename}
-                  onClick={() => loadPresetData(preset.filename)}
-                  disabled={isUploading}
-                  className="w-full flex items-center justify-between gap-2 hover:bg-dark-700/50 text-slate-400 hover:text-white py-2 px-3 rounded-lg transition-all text-left text-xs disabled:opacity-50 disabled:cursor-not-allowed group"
-                >
-                  <span className="truncate">{preset.name}</span>
-                  {isUploading ? (
-                    <Loader size={14} className="animate-spin text-primary-500" />
-                  ) : (
-                    <StepForward size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-primary-500" />
-                  )}
-                </button>
-              ))}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="w-full flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
+              {isUploading ? 'Processing...' : 'Load CSV Data'}
+            </button>
+            <div className="pt-4">
+              <button
+                onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
+                className="w-full flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-widest mb-3 hover:text-slate-300 transition-colors group"
+              >
+                Preset Data Sets
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${isPresetsExpanded ? '' : '-rotate-90'}`}
+                />
+              </button>
+              {isPresetsExpanded && (
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                  {PRESETS.map((preset) => (
+                    <button
+                      key={preset.filename}
+                      onClick={() => loadPresetData(preset.filename)}
+                      disabled={isUploading}
+                      className="w-full flex items-center justify-between gap-2 hover:bg-dark-700/50 text-slate-400 hover:text-white py-2 px-3 rounded-lg transition-all text-left text-xs disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                      <span className="truncate">{preset.name}</span>
+                      {isUploading ? (
+                        <Loader size={14} className="animate-spin text-primary-500" />
+                      ) : (
+                        <StepForward size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-primary-500" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        {isUploading && (
-          <div className="space-y-1">
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-400">Processing CSV...</span>
-              <span className="text-primary-400 font-mono">{uploadProgress}%</span>
-            </div>
-            <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
-              <div
-                className="h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out"
-                style={{ width: `${uploadProgress}%` }}
-              />
+            {isUploading && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Processing CSV...</span>
+                  <span className="text-primary-400 font-mono">{uploadProgress}%</span>
+                </div>
+                <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="text-xs text-slate-500 mt-2">
+              {!isUploading && (rawData.length > 0 ? `${rawData.length} candles loaded` : 'No data loaded')}
             </div>
           </div>
-        )}
-        <div className="text-xs text-slate-500 mt-2">
-          {!isUploading && (rawData.length > 0 ? `${rawData.length} candles loaded` : 'No data loaded')}
-        </div>
-      </div>
+        )
+      }
 
       {/* Controls */}
       <div className="mb-6 space-y-4">
