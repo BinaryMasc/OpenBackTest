@@ -3,6 +3,8 @@ import { Upload, Loader, StepForward, PlayCircle, TrendingUp, Play, Pause, Chevr
 import { useBacktestStore } from '../store/useBacktestStore';
 import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
+import { TradingPanel } from './TradingPanel';
+import { useTradeStore } from '../store/useTradeStore';
 
 
 const PRESETS = [
@@ -100,6 +102,7 @@ export function Controls() {
     if (parsedData.length > 0) {
       setUploadProgress(100);
       loadData(parsedData, extractedSymbol || undefined);
+      useTradeStore.getState().reset();
     } else {
       setUploading(false);
       setUploadProgress(0);
@@ -297,6 +300,8 @@ export function Controls() {
                 Step
               </button>
             </div>
+            
+            <TradingPanel />
           </div>
         )}
       </div>
