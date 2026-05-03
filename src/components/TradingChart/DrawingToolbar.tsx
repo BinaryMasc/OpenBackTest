@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle, ChartLine, Clock } from 'lucide-react';
+import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle, ChartLine } from 'lucide-react';
 import { useBacktestStore } from '../../store/useBacktestStore';
 import type { Timeframe } from '../../types';
 
@@ -196,16 +196,16 @@ export function DrawingToolbar({
         <Minus size={24} style={{ transform: 'rotate(90deg)' }} />
       </button>
 
-        <button
-          onClick={() => onToolClick('text')}
-          className={`p-2 rounded transition-colors font-bold text-lg ${activeTool === 'text'
-            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-            : 'hover:bg-dark-700 text-slate-400 border border-transparent'
-            }`}
-          title="Text"
-        >
-          T
-        </button>
+      <button
+        onClick={() => onToolClick('text')}
+        className={`p-2 rounded transition-colors font-bold text-lg ${activeTool === 'text'
+          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+          : 'hover:bg-dark-700 text-slate-400 border border-transparent'
+          }`}
+        title="Text"
+      >
+        T
+      </button>
 
       <div className="mt-auto">
         <button

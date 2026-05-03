@@ -35,9 +35,9 @@ export function PlaybackBar() {
     <div className="w-full flex flex-col gap-4 py-2">
       {/* Progress Slider */}
       <div className="relative w-full h-4 group flex items-center">
-        <div className="absolute w-full h-1 bg-dark-900 rounded-full overflow-hidden">
+        <div className="absolute w-full h-1 bg-dark-700 rounded-full overflow-hidden">
           <div 
-            className="h-full bg-gradient-to-r from-primary-600 to-primary-400 rounded-full transition-all duration-300 ease-out"
+            className="h-full bg-gradient-to-r from-primary-500 to-primary-300 rounded-full transition-all duration-300 ease-out shadow-[0_0_8px_rgba(59,130,246,0.3)]"
             style={{ width: `${progress}%` }}
           />
         </div>
