@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { Upload, Loader, StepForward, PlayCircle, TrendingUp } from 'lucide-react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp, Play, Pause, ChevronRight } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import type { Candle, Timeframe } from '../types';
 import { PlaybackBar } from './PlaybackBar';
@@ -15,7 +15,7 @@ const PRESETS = [
 export function Controls() {
   const {
     rawData, currentIndex, timeframe, isPlaying, playbackSpeed, isUploading, uploadProgress, mode,
-    loadData, setTimeframe, setPlaybackSpeed, setUploading, setUploadProgress, setMode
+    loadData, setTimeframe, setPlaybackSpeed, setUploading, setUploadProgress, setMode, togglePlayback, stepForward
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -253,6 +253,36 @@ export function Controls() {
           <div className="pt-4 border-t border-dark-700/50">
             <h4 className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-3">Playback Controls</h4>
             <PlaybackBar />
+          </div>
+        )}
+
+        {/* Simulation Controls (Conditional) */}
+        {mode === 'simulation' && (
+          <div className="pt-4 border-t border-dark-700/50">
+            <h4 className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-3">Simulation Controls</h4>
+            <div className="flex gap-2">
+              <button
+                onClick={togglePlayback}
+                disabled={rawData.length === 0}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                  isPlaying 
+                    ? 'bg-danger/20 text-danger border border-danger/50' 
+                    : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500/30'
+                }`}
+              >
+                {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+                {isPlaying ? 'Pause' : 'Play'}
+              </button>
+              
+              <button
+                onClick={stepForward}
+                disabled={rawData.length === 0 || isPlaying}
+                className="flex-1 flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-2.5 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+              >
+                <ChevronRight size={16} />
+                Step
+              </button>
+            </div>
           </div>
         )}
       </div>
