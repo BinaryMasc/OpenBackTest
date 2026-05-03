@@ -1,24 +1,23 @@
-import { useRef, useEffect } from 'react';
-import { Upload, Loader, StepForward, PlayCircle, TrendingUp, Play, Pause, ChevronRight } from 'lucide-react';
+import { useRef, useEffect, useState } from 'react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp, Play, Pause, ChevronRight, ChevronDown } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
-import type { Candle /*, Timeframe */ } from '../types';
+import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
 
-//const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
 const PRESETS = [
-  /*{ name: 'BTC/USDT 1m (Demo)', filename: 'btc_usdt_m1.csv' },*/
   { name: 'BTC/USDT 1m (2025-2026)', filename: 'btc_usdt_m1_jan2025-apr2026.csv' },
   { name: 'ETH/USDT 1m (2025-2026)', filename: 'eth_usdt_m1_jan2025-apr2026.csv' },
 ];
 
 export function Controls() {
   const {
-    rawData, currentIndex, timeframe, isPlaying, playbackSpeed, isUploading, uploadProgress, mode,
-    loadData, setTimeframe, setPlaybackSpeed, setUploading, setUploadProgress, setMode, togglePlayback, stepForward
+    rawData, currentIndex, isPlaying, playbackSpeed, isUploading, uploadProgress, mode,
+    loadData, setPlaybackSpeed, setUploading, setUploadProgress, setMode, togglePlayback, stepForward
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isPresetsExpanded, setIsPresetsExpanded] = useState(true);
 
   // Auto-play logic
   useEffect(() => {
@@ -40,6 +39,7 @@ export function Controls() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsPresetsExpanded(false);
     setUploading(true);
     setUploadProgress(0);
 
@@ -179,24 +179,35 @@ export function Controls() {
           {isUploading ? 'Processing...' : 'Load CSV Data'}
         </button>
         <div className="pt-4">
-          <h4 className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-3">Preset Data Sets</h4>
-          <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.filename}
-                onClick={() => loadPresetData(preset.filename)}
-                disabled={isUploading}
-                className="w-full flex items-center justify-between gap-2 hover:bg-dark-700/50 text-slate-400 hover:text-white py-2 px-3 rounded-lg transition-all text-left text-xs disabled:opacity-50 disabled:cursor-not-allowed group"
-              >
-                <span className="truncate">{preset.name}</span>
-                {isUploading ? (
-                  <Loader size={14} className="animate-spin text-primary-500" />
-                ) : (
-                  <StepForward size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-primary-500" />
-                )}
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
+            className="w-full flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-widest mb-3 hover:text-slate-300 transition-colors group"
+          >
+            Preset Data Sets
+            <ChevronDown
+              size={14}
+              className={`transition-transform duration-200 ${isPresetsExpanded ? '' : '-rotate-90'}`}
+            />
+          </button>
+          {isPresetsExpanded && (
+            <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.filename}
+                  onClick={() => loadPresetData(preset.filename)}
+                  disabled={isUploading}
+                  className="w-full flex items-center justify-between gap-2 hover:bg-dark-700/50 text-slate-400 hover:text-white py-2 px-3 rounded-lg transition-all text-left text-xs disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <span className="truncate">{preset.name}</span>
+                  {isUploading ? (
+                    <Loader size={14} className="animate-spin text-primary-500" />
+                  ) : (
+                    <StepForward size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-primary-500" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {isUploading && (
           <div className="space-y-1">
