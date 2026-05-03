@@ -136,7 +136,9 @@ export function Controls() {
         <p className="text-slate-400 text-xs">Manual Strategy Tester</p>
       </div>
 
-      {/* Mode Selector */}
+      {/* Scrollable Middle Section */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4 -mr-2">
+        {/* Mode Selector */}
       <div className="mb-6 space-y-2">
         <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Mode</h3>
         <div className="flex bg-dark-900 p-1 rounded-xl border border-dark-700">
@@ -304,6 +306,7 @@ export function Controls() {
             <TradingPanel />
           </div>
         )}
+      </div>
       </div>
 
       {/* Playback */}

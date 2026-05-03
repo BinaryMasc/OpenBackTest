@@ -217,12 +217,12 @@ export function registerCustomOverlays(): void {
         {
           type: 'line',
           attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
-          styles: { style: 'solid', color, size: 1 },
+          styles: { style: 'dashed', color, size: 1, dashedValue: [4, 4] },
         },
         {
           type: 'text',
           attrs: { x: 10, y: y - 10, text, align: 'left', baseline: 'bottom' },
-          styles: { color: '#fff', size: 11, backgroundColor: color, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 },
+          styles: { color: '#fff', size: 13, backgroundColor: color, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 },
         },
       ];
     },
@@ -243,7 +243,7 @@ export function registerCustomOverlays(): void {
         {
           type: 'line',
           attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
-          styles: { style: 'solid', color, size: 1 },
+          styles: { style: 'dashed', color, size: 1, dashedValue: [4, 4] },
         },
         {
           type: 'text',

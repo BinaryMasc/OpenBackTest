@@ -17,14 +17,14 @@ export function useTradeOverlays(chartRef: React.MutableRefObject<Chart | null>)
     if (position !== 'flat' && entryPrice !== null) {
       const pnlPrefix = unrealizedPnL >= 0 ? '+' : '';
       const pnlText = `${pnlPrefix}${unrealizedPnL.toFixed(2)}`;
-      const positionText = `${position.toUpperCase()} ${activePositionSize} @ ${entryPrice.toFixed(2)} | PnL: ${pnlText}`;
+      const positionText = `${position === 'long' ? '' : '-'} ${activePositionSize} @ ${entryPrice.toFixed(2)} | PnL: ${pnlText}`;
 
       const overlayData = {
         id: 'positionLine_overlay',
         name: 'positionLine',
         extendData: {
           text: positionText,
-          color: position === 'long' ? '#02923cff' : '#ef4444'
+          color: position === 'long' ? '#008a63ff' : '#bb2b2bff'
         },
         points: [{ value: entryPrice }]
       };
