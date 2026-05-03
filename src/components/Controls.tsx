@@ -1,10 +1,10 @@
 import { useRef, useEffect } from 'react';
 import { Upload, Loader, StepForward, PlayCircle, TrendingUp, Play, Pause, ChevronRight } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
-import type { Candle, Timeframe } from '../types';
+import type { Candle /*, Timeframe */ } from '../types';
 import { PlaybackBar } from './PlaybackBar';
 
-const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
+//const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
 const PRESETS = [
   /*{ name: 'BTC/USDT 1m (Demo)', filename: 'btc_usdt_m1.csv' },*/
@@ -265,8 +265,8 @@ export function Controls() {
                 onClick={togglePlayback}
                 disabled={rawData.length === 0}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium transition-all ${isPlaying
-                    ? 'bg-danger/20 text-danger border border-danger/50'
-                    : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500/30'
+                  ? 'bg-danger/20 text-danger border border-danger/50'
+                  : 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 hover:bg-emerald-500/30'
                   }`}
               >
                 {isPlaying ? <Pause size={16} /> : <Play size={16} />}

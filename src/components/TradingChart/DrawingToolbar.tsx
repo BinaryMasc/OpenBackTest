@@ -48,21 +48,21 @@ export function DrawingToolbar({
     <div className="flex flex-col items-center gap-2 p-2 border-r border-dark-700 bg-dark-800 shrink-0 relative">
       <button
         onClick={onToggleIndicatorsMenu}
-        className={`p-2 rounded transition-colors flex items-center justify-center ${indicatorBtnActive
+        className={`px-1 py-3 rounded transition-colors flex items-center justify-center ${indicatorBtnActive
           ? 'bg-primary-500/20 text-primary-500 border border-primary-500/30'
           : 'hover:bg-dark-700 text-slate-400 border border-transparent'
           }`}
         title="Indicators"
       >
-        <span className="font-bold text-[12px] tracking-tighter">fx</span>
-        <ChevronDown size={12} className="ml-0.5" />
+        <ChartLine size={20} />
+        <ChevronDown size={12} />
       </button>
 
       {/* Timeframe Button */}
       <div className="relative" ref={timeframeMenuRef}>
         <button
           onClick={() => setShowTimeframeMenu(!showTimeframeMenu)}
-          className={`w-full p-2 rounded transition-colors flex items-center justify-center gap-1 ${showTimeframeMenu
+          className={`w-full px-1 py-3 rounded transition-colors flex items-center justify-center gap-1 ${showTimeframeMenu
             ? 'bg-primary-500/20 text-primary-500 border border-primary-500/30'
             : 'hover:bg-dark-700 text-slate-400 border border-transparent'
             }`}
@@ -127,7 +127,7 @@ export function DrawingToolbar({
           }`}
         title="Trend Line"
       >
-        <ChartLine size={24} />
+        <Minus size={24} style={{ transform: 'rotate(135deg)' }} />
       </button>
 
       <button
