@@ -11,11 +11,16 @@ interface TradeState {
   activePositionSize: number;
   orderSize: number;
 
+  takeProfit: number | null;
+  stopLoss: number | null;
+
   buy: (price: number) => void;
   sell: (price: number) => void;
   flat: (price: number) => void;
   updateUnrealizedPnL: (currentPrice: number) => void;
   setOrderSize: (size: number) => void;
+  setTakeProfit: (price: number | null) => void;
+  setStopLoss: (price: number | null) => void;
   reset: () => void;
 }
 
@@ -27,6 +32,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   entryPrice: null,
   activePositionSize: 0,
   orderSize: 1,
+  takeProfit: null,
+  stopLoss: null,
 
   buy: (price: number) => {
     const { position, activePositionSize, entryPrice, orderSize } = get();
@@ -59,7 +66,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           position: 'flat',
           activePositionSize: 0,
           entryPrice: null,
-          unrealizedPnL: 0
+          unrealizedPnL: 0,
+          takeProfit: null,
+          stopLoss: null
         }));
       } else {
         // Flip position
@@ -71,7 +80,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           position: 'long',
           activePositionSize: remainder,
           entryPrice: price,
-          unrealizedPnL: 0
+          unrealizedPnL: 0,
+          takeProfit: null,
+          stopLoss: null
         }));
       }
     } else {
@@ -116,7 +127,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           position: 'flat',
           activePositionSize: 0,
           entryPrice: null,
-          unrealizedPnL: 0
+          unrealizedPnL: 0,
+          takeProfit: null,
+          stopLoss: null
         }));
       } else {
         // Flip position
@@ -128,7 +141,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           position: 'short',
           activePositionSize: remainder,
           entryPrice: price,
-          unrealizedPnL: 0
+          unrealizedPnL: 0,
+          takeProfit: null,
+          stopLoss: null
         }));
       }
     } else {
@@ -159,15 +174,38 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       position: 'flat',
       entryPrice: null,
       activePositionSize: 0,
-      unrealizedPnL: 0
+      unrealizedPnL: 0,
+      takeProfit: null,
+      stopLoss: null
     }));
   },
 
   updateUnrealizedPnL: (currentPrice: number) => {
-    const { position, entryPrice, activePositionSize } = get();
+    const { position, entryPrice, activePositionSize, takeProfit, stopLoss, flat } = get();
     if (position === 'flat' || entryPrice === null) {
       set({ unrealizedPnL: 0 });
       return;
+    }
+
+    // Check TP / SL triggers
+    if (position === 'long') {
+      if (takeProfit !== null && currentPrice >= takeProfit) {
+        flat(takeProfit);
+        return;
+      }
+      if (stopLoss !== null && currentPrice <= stopLoss) {
+        flat(stopLoss);
+        return;
+      }
+    } else if (position === 'short') {
+      if (takeProfit !== null && currentPrice <= takeProfit) {
+        flat(takeProfit);
+        return;
+      }
+      if (stopLoss !== null && currentPrice >= stopLoss) {
+        flat(stopLoss);
+        return;
+      }
     }
 
     let upnl = 0;
@@ -180,6 +218,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   },
 
   setOrderSize: (size: number) => set({ orderSize: size }),
+  setTakeProfit: (price: number | null) => set({ takeProfit: price }),
+  setStopLoss: (price: number | null) => set({ stopLoss: price }),
   
   reset: () => set({
     balance: 10000,
@@ -188,6 +228,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     position: 'flat',
     entryPrice: null,
     activePositionSize: 0,
-    orderSize: 1
+    orderSize: 1,
+    takeProfit: null,
+    stopLoss: null
   })
 }));

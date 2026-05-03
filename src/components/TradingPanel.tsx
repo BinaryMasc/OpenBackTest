@@ -6,7 +6,8 @@ import { CircleOff, Wallet, BarChart3, Activity, ChevronDown } from 'lucide-reac
 export function TradingPanel() {
   const {
     balance, realizedPnL, unrealizedPnL, position, entryPrice, activePositionSize, orderSize,
-    buy, sell, flat, updateUnrealizedPnL, setOrderSize
+    takeProfit, stopLoss,
+    buy, sell, flat, updateUnrealizedPnL, setOrderSize, setTakeProfit, setStopLoss
   } = useTradeStore();
 
   const { rawData, currentIndex } = useBacktestStore();
@@ -127,6 +128,32 @@ export function TradingPanel() {
         </button>
       </div>
 
+      {/* TP / SL Controls */}
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <button
+          onClick={() => {
+            if (position === 'flat' || !currentPrice) return;
+            const diff = currentPrice * 0.01;
+            setTakeProfit(position === 'long' ? currentPrice + diff : currentPrice - diff);
+          }}
+          disabled={position === 'flat' || !currentPrice}
+          className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-emerald-400 border border-emerald-900/50 py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
+        >
+          Add TP (1%)
+        </button>
+        <button
+          onClick={() => {
+            if (position === 'flat' || !currentPrice) return;
+            const diff = currentPrice * 0.01;
+            setStopLoss(position === 'long' ? currentPrice - diff : currentPrice + diff);
+          }}
+          disabled={position === 'flat' || !currentPrice}
+          className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-red-400 border border-red-900/50 py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
+        >
+          Add SL (1%)
+        </button>
+      </div>
+
       {/* Position Details Bellow */}
       <div className="pt-3 border-t border-dark-700/30 space-y-1.5">
         <div className="flex justify-between items-center text-[10px] uppercase font-bold">
@@ -146,6 +173,14 @@ export function TradingPanel() {
         <div className="flex justify-between items-center text-[10px] uppercase font-bold">
           <span className="text-slate-500">Unrealized P&L</span>
           <span className="text-slate-300 font-mono">{unrealizedPnL.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between items-center text-[10px] uppercase font-bold">
+          <span className="text-slate-500">Take Profit</span>
+          <span className="text-emerald-400 font-mono">{takeProfit ? takeProfit.toFixed(2) : '-'}</span>
+        </div>
+        <div className="flex justify-between items-center text-[10px] uppercase font-bold">
+          <span className="text-slate-500">Stop Loss</span>
+          <span className="text-red-400 font-mono">{stopLoss ? stopLoss.toFixed(2) : '-'}</span>
         </div>
       </div>
     </div>

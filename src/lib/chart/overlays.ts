@@ -95,7 +95,7 @@ export function registerCustomOverlays(): void {
         });
       }
 
-       return figures;
+      return figures;
     },
   });
 
@@ -149,6 +149,106 @@ export function registerCustomOverlays(): void {
             baseline: 'top',
           },
           styles: { color, size, backgroundColor: 'transparent' },
+        },
+      ];
+    },
+  });
+
+  registerOverlay({
+    name: 'positionLine',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length === 0) return [];
+      const y = coordinates[0].y;
+      const data = overlay.extendData as Record<string, string> | undefined;
+      const color = data?.color || '#2196F3';
+      const text = data?.text || '';
+
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: 0, y },
+              { x: bounding.width, y },
+            ],
+          },
+          styles: { style: 'dashed', color, dashedValue: [4, 4], size: 2 },
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: 10,
+            y: y - 10,
+            text,
+            align: 'left',
+            baseline: 'bottom',
+          },
+          styles: {
+            color: '#fff',
+            size: 12,
+            backgroundColor: color,
+            paddingLeft: 6,
+            paddingRight: 6,
+            paddingTop: 4,
+            paddingBottom: 4,
+            borderRadius: 4
+          },
+        },
+      ];
+    },
+  });
+
+  registerOverlay({
+    name: 'tpLine',
+    totalStep: 2,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length === 0) return [];
+      const y = coordinates[0].y;
+      const color = '#4caf50';
+      const text = overlay.extendData as string || 'TP';
+      return [
+        {
+          type: 'line',
+          attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+          styles: { style: 'solid', color, size: 1 },
+        },
+        {
+          type: 'text',
+          attrs: { x: 10, y: y - 10, text, align: 'left', baseline: 'bottom' },
+          styles: { color: '#fff', size: 11, backgroundColor: color, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 },
+        },
+      ];
+    },
+  });
+
+  registerOverlay({
+    name: 'slLine',
+    totalStep: 2,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length === 0) return [];
+      const y = coordinates[0].y;
+      const color = '#f44336';
+      const text = overlay.extendData as string || 'SL';
+      return [
+        {
+          type: 'line',
+          attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+          styles: { style: 'solid', color, size: 1 },
+        },
+        {
+          type: 'text',
+          attrs: { x: 10, y: y - 10, text, align: 'left', baseline: 'bottom' },
+          styles: { color: '#fff', size: 11, backgroundColor: color, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 },
         },
       ];
     },

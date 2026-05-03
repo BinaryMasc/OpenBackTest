@@ -13,6 +13,7 @@ import { IndicatorMenu } from './IndicatorMenu';
 import { IndicatorProperties } from './IndicatorProperties';
 import { IndicatorLegend } from './IndicatorLegend';
 import { OverlayEditor } from './OverlayEditor';
+import { useTradeOverlays } from '../../hooks/useTradeOverlays';
 
 export function TradingChart() {
   const rawData = useBacktestStore(state => state.rawData);
@@ -35,6 +36,7 @@ export function TradingChart() {
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();
 
   const indicators = useIndicators(chartRef);
+  useTradeOverlays(chartRef);
 
   const handleOverlayCreated = useCallback((overlay: Overlay) => {
     recordAdd(overlay);
