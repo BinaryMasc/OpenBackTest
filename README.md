@@ -18,6 +18,12 @@ A manual backtest open-source tool Client-Side Only.
 - Allows you to import historical data and visualize it on a chart.
 - You can also draw on the chart and add indicators to analyze the data.
 
+### Data import format
+
+```
+datetime,open,high,low,close,volume,symbol
+YYYY-MM-DD HH:mm:ss,open,high,low,close,volume,symbol
+```
 
 ### Execute locally
 ```sh
