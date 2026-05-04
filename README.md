@@ -1,5 +1,7 @@
 # OpenBackTest
 
+[Open in browser](https://binarymasc.github.io/OpenBackTest/)
+
 A manual backtest open-source tool Client-Side Only.
 
 **Playback**

@@ -113,7 +113,7 @@ export function Controls() {
   const loadPresetData = async (filename: string) => {
     try {
       setUploading(true);
-      const response = await fetch(`/data/${filename}`);
+      const response = await fetch(`${import.meta.env.BASE_URL}data/${filename}`);
       const csvText = await response.text();
       const file = new File([csvText], filename, { type: "text/csv" });
 
