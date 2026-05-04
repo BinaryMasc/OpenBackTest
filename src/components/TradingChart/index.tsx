@@ -89,7 +89,9 @@ export function TradingChart() {
       const isMod = e.ctrlKey || e.metaKey;
       const chart = chartRef.current;
 
-      if (isMod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'Shift' || e.key === 'Control')) {
+        handleToolClick('measurement');
+      } else if (isMod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo(chart, id => {
           if (selectedOverlay?.id === id) setSelectedOverlay(null);

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle, ChartLine } from 'lucide-react';
+import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle, ChartLine, Ruler } from 'lucide-react';
 import { useBacktestStore } from '../../store/useBacktestStore';
 import type { Timeframe } from '../../types';
 
@@ -205,6 +205,17 @@ export function DrawingToolbar({
         title="Text"
       >
         T
+      </button>
+
+      <button
+        onClick={() => onToolClick('measurement')}
+        className={`p-2 rounded transition-colors ${activeTool === 'measurement'
+          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+          : 'hover:bg-dark-700 text-slate-400 border border-transparent'
+          }`}
+        title="Measure (Ctrl+Shift)"
+      >
+        <Ruler size={24} />
       </button>
 
       <div className="mt-auto">

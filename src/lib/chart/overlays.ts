@@ -253,4 +253,104 @@ export function registerCustomOverlays(): void {
       ];
     },
   });
+
+  registerOverlay({
+    name: 'measurement',
+    totalStep: 3,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: true,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates, overlay, precision }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length < 2) return [];
+      const p1 = coordinates[0];
+      const p2 = coordinates[1];
+      const points = overlay.points;
+
+      const v1 = points[0].value ?? 0;
+      const v2 = points[1].value ?? 0;
+      const priceDiff = v2 - v1;
+      const pricePercent = (priceDiff / v1) * 100;
+
+      const i1 = points[0].dataIndex ?? 0;
+      const i2 = points[1].dataIndex ?? 0;
+      const bars = Math.abs(i2 - i1);
+
+      const figures: OverlayFigure[] = [];
+
+      // Box
+      figures.push({
+        type: 'polygon',
+        attrs: {
+          coordinates: [
+            p1,
+            { x: p2.x, y: p1.y },
+            p2,
+            { x: p1.x, y: p2.y },
+          ],
+        },
+        styles: {
+          style: 'stroke_fill',
+          color: 'rgba(33, 150, 243, 0.15)',
+          borderColor: '#2196F3',
+          borderSize: 1
+        },
+      });
+
+      // Line
+      figures.push({
+        type: 'line',
+        attrs: { coordinates: [p1, p2] },
+        styles: { color: '#2196F3', size: 1, style: 'dashed', dashedValue: [4, 4] }
+      });
+
+      // Label
+      const sign = priceDiff >= 0 ? '+' : '';
+      const labelX = (p1.x + p2.x) / 2;
+      const labelY = (p1.y + p2.y) / 2;
+
+      figures.push({
+        type: 'text',
+        attrs: {
+          x: labelX,
+          y: labelY - 8,
+          text: `${sign}${priceDiff.toFixed(precision.price)} (${sign}${pricePercent.toFixed(2)}%)`,
+          align: 'center',
+          baseline: 'bottom',
+        },
+        styles: {
+          color: '#ffffff',
+          size: 12,
+          backgroundColor: '#2196F3',
+          paddingLeft: 6,
+          paddingRight: 6,
+          paddingTop: 2,
+          paddingBottom: 2,
+          borderRadius: 4
+        },
+      });
+
+      figures.push({
+        type: 'text',
+        attrs: {
+          x: labelX,
+          y: labelY + 8,
+          text: `${bars} bars`,
+          align: 'center',
+          baseline: 'top',
+        },
+        styles: {
+          color: '#ffffff',
+          size: 11,
+          backgroundColor: 'rgba(33, 150, 243, 0.8)',
+          paddingLeft: 6,
+          paddingRight: 6,
+          paddingTop: 2,
+          paddingBottom: 2,
+          borderRadius: 4
+        },
+      });
+
+      return figures;
+    },
+  });
 }
