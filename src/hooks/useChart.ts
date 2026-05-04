@@ -58,7 +58,12 @@ export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
       chartData.length - prevDataLengthRef.current > 1
     ) {
       chartRef.current.applyNewData(chartData);
-      if (isNewTimeframe) chartRef.current.resize();
+      if (isNewTimeframe) {
+        // Defer resize to allow klinecharts to process applyNewData and avoid UI freeze
+        setTimeout(() => {
+          chartRef.current?.resize();
+        }, 50);
+      }
     } else {
       chartRef.current.updateData(chartData[chartData.length - 1]);
     }
