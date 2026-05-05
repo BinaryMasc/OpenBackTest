@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Upload, Loader, StepForward, PlayCircle, TrendingUp, Play, Pause, ChevronRight, ChevronDown } from 'lucide-react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
@@ -17,7 +17,7 @@ const PRESETS = [
 export function Controls() {
   const {
     rawData, currentIndex, isPlaying, playbackSpeed, isUploading, uploadProgress, mode,
-    loadData, setPlaybackSpeed, setUploading, setUploadProgress, setMode, togglePlayback, stepForward
+    loadData, setPlaybackSpeed, setUploading, setUploadProgress, setMode
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
