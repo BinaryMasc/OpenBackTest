@@ -1,9 +1,9 @@
 import { Controls } from './components/Controls';
 import { TradingChart } from './components/TradingChart';
-import { useBacktestStore } from './store/useBacktestStore';
+//import { useBacktestStore } from './store/useBacktestStore';
 
 function App() {
-  const symbol = useBacktestStore((state) => state.symbol);
+  //const symbol = useBacktestStore((state) => state.symbol);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-dark-900 font-sans text-slate-300">

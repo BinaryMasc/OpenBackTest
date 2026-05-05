@@ -1,6 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { Square, Minus, Trash2, ChevronDown, Pen, Rows4, Undo2, Redo2, Circle, ChartLine, Ruler } from 'lucide-react';
-import { useBacktestStore } from '../../store/useBacktestStore';
+import { Square, Minus, Trash2, Pen, Rows4, Undo2, Redo2, Circle, ChartLine, Ruler, ChevronDown } from 'lucide-react';
 
 interface DrawingToolbarProps {
   activeTool: string | null;
