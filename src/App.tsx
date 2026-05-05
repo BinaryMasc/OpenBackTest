@@ -10,9 +10,9 @@ function App() {
       <Controls />
       <main className="flex-1 flex flex-col relative">
         <div className="absolute inset-0 p-4 flex flex-col">
-            <div className="mb-2 pl-1 shrink-0">
+          {/* <div className="mb-2 pl-1 shrink-0">
               <span className="text-lg font-semibold text-slate-200">{(symbol ?? 'No symbol loaded.')}</span>
-            </div>
+            </div> */}
           <div className="w-full flex-1 border border-dark-700 rounded-xl overflow-hidden shadow-2xl bg-dark-900">
             <TradingChart />
           </div>

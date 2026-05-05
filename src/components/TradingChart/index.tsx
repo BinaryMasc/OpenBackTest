@@ -14,6 +14,7 @@ import { IndicatorProperties } from './IndicatorProperties';
 import { IndicatorLegend } from './IndicatorLegend';
 import { OverlayEditor } from './OverlayEditor';
 import { useTradeOverlays } from '../../hooks/useTradeOverlays';
+import { SymbolLegend } from './SymbolLegend';
 
 export function TradingChart() {
   const rawData = useBacktestStore(state => state.rawData);
@@ -119,71 +120,78 @@ export function TradingChart() {
   }, [chartRef, selectedOverlay, undo, redo, recordRemove, selectedForDeleteRef]);
 
   return (
-    <div className="w-full h-full flex bg-dark-900 text-slate-300">
-      <DrawingToolbar
-        activeTool={activeTool}
-        onToolClick={handleToolClick}
-        onClear={clearOverlays}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        showIndicatorsMenu={indicators.showAddMenu}
-        onToggleIndicatorsMenu={() =>
-          indicators.setShowAddMenu(!indicators.showAddMenu)
-        }
-      />
+    <div className="w-full h-full flex flex-col bg-dark-900 text-slate-300">
+      {/* Top Header Bar */}
+      <div className="h-10 border-b border-dark-700 bg-dark-800 flex items-center px-4 shrink-0 overflow-visible z-[60]">
+        <SymbolLegend />
+      </div>
 
-      <div className="flex-1 relative w-full h-full">
-        <ChartContainer containerRef={containerRef} />
-
-        {/* Top-left indicator legend */}
-        <IndicatorLegend
-          instances={indicators.instances}
-          onSelect={id => indicators.setEditingInstanceId(id)}
-          onRemove={indicators.removeIndicator}
-          onToggleVisibility={indicators.toggleVisibility}
+      <div className="flex-1 flex overflow-hidden">
+        <DrawingToolbar
+          activeTool={activeTool}
+          onToolClick={handleToolClick}
+          onClear={clearOverlays}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          showIndicatorsMenu={indicators.showAddMenu}
+          onToggleIndicatorsMenu={() =>
+            indicators.setShowAddMenu(!indicators.showAddMenu)
+          }
         />
 
-        {/* Add indicator dropdown */}
-        {indicators.showAddMenu && (
-          <IndicatorMenu
-            onAdd={indicators.addIndicator}
-            onClose={() => indicators.setShowAddMenu(false)}
-          />
-        )}
+        <div className="flex-1 relative w-full h-full">
+          <ChartContainer containerRef={containerRef} />
 
-        {/* Indicator properties popup */}
-        {indicators.editingInstance && (
-          <IndicatorProperties
-            instance={indicators.editingInstance}
-            onUpdate={indicators.updateInstance}
+          {/* Top-left indicator legend */}
+          <IndicatorLegend
+            instances={indicators.instances}
+            onSelect={id => indicators.setEditingInstanceId(id)}
             onRemove={indicators.removeIndicator}
-            onClose={() => indicators.setEditingInstanceId(null)}
+            onToggleVisibility={indicators.toggleVisibility}
           />
-        )}
 
-        {/* Drawing overlay editor */}
-        {selectedOverlay && (
-          <OverlayEditor
-            overlay={selectedOverlay}
-            overlayColor={overlayColor}
-            overlayOpacity={overlayOpacity}
-            overlayFontSize={overlayFontSize}
-            onColorChange={color => {
-              setOverlayColor(color);
-            }}
-            onOpacityChange={opacity => {
-              setOverlayOpacity(opacity);
-            }}
-            onFontSizeChange={size => {
-              setOverlayFontSize(size);
-            }}
-            onRemove={handleOverlayRemove}
-            onClose={() => setSelectedOverlay(null)}
-            chartRef={chartRef}
-          />
-        )}
+          {/* Add indicator dropdown */}
+          {indicators.showAddMenu && (
+            <IndicatorMenu
+              onAdd={indicators.addIndicator}
+              onClose={() => indicators.setShowAddMenu(false)}
+            />
+          )}
+
+          {/* Indicator properties popup */}
+          {indicators.editingInstance && (
+            <IndicatorProperties
+              instance={indicators.editingInstance}
+              onUpdate={indicators.updateInstance}
+              onRemove={indicators.removeIndicator}
+              onClose={() => indicators.setEditingInstanceId(null)}
+            />
+          )}
+
+          {/* Drawing overlay editor */}
+          {selectedOverlay && (
+            <OverlayEditor
+              overlay={selectedOverlay}
+              overlayColor={overlayColor}
+              overlayOpacity={overlayOpacity}
+              overlayFontSize={overlayFontSize}
+              onColorChange={color => {
+                setOverlayColor(color);
+              }}
+              onOpacityChange={opacity => {
+                setOverlayOpacity(opacity);
+              }}
+              onFontSizeChange={size => {
+                setOverlayFontSize(size);
+              }}
+              onRemove={handleOverlayRemove}
+              onClose={() => setSelectedOverlay(null)}
+              chartRef={chartRef}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

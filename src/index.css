@@ -73,3 +73,12 @@ input[type="range"]::-moz-range-track {
   background: #334155; /* dark-700 */
   border-radius: 2px;
 }
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}

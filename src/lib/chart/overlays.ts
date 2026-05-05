@@ -353,4 +353,47 @@ export function registerCustomOverlays(): void {
       return figures;
     },
   });
+
+  registerOverlay({
+    name: 'tradeArrow',
+    totalStep: 1,
+    createPointFigures: ({ coordinates, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length === 0) return [];
+      const { x, y } = coordinates[0];
+      const type = overlay.extendData as 'buy' | 'sell';
+      const color = type === 'buy' ? '#22c55e' : '#ef4444';
+
+      const figures: OverlayFigure[] = [];
+
+      if (type === 'buy') {
+        // Arrow pointing up
+        figures.push({
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x, y },
+              { x: x - 6, y: y + 12 },
+              { x: x + 6, y: y + 12 }
+            ]
+          },
+          styles: { style: 'fill', color }
+        });
+      } else {
+        // Arrow pointing down
+        figures.push({
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x, y },
+              { x: x - 6, y: y - 12 },
+              { x: x + 6, y: y - 12 }
+            ]
+          },
+          styles: { style: 'fill', color }
+        });
+      }
+
+      return figures;
+    }
+  });
 }

@@ -1,6 +1,14 @@
 import { create } from 'zustand';
+import { useBacktestStore } from './useBacktestStore';
 
 export type PositionType = 'long' | 'short' | 'flat';
+export interface Trade {
+  id: string;
+  type: 'buy' | 'sell';
+  price: number;
+  time: number; // unix timestamp in seconds
+  quantity: number;
+}
 
 interface TradeState {
   balance: number;
@@ -22,12 +30,16 @@ interface TradeState {
 
   isBlown: boolean;
   hasTraded: boolean;
+  tradeHistory: Trade[];
+  showTradeHistory: boolean;
 
   setLeverage: (val: number) => void;
   setInitialBalance: (val: number) => void;
   setMarginBlowoutPercent: (val: number) => void;
   setContractSize: (val: number) => void;
   setFeePercent: (val: number) => void;
+  setShowTradeHistory: (show: boolean) => void;
+  clearTradeHistory: () => void;
 
   buy: (price: number) => void;
   sell: (price: number) => void;
@@ -58,6 +70,11 @@ export const useTradeStore = create<TradeState>((set, get) => ({
 
   isBlown: false,
   hasTraded: false,
+  tradeHistory: [],
+  showTradeHistory: false,
+
+  setShowTradeHistory: (show: boolean) => set({ showTradeHistory: show }),
+  clearTradeHistory: () => set({ tradeHistory: [] }),
 
   buy: (price: number) => {
     const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent } = get();
@@ -137,6 +154,18 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         hasTraded: true
       }));
     }
+
+    // Record trade
+    const backtestTime = useBacktestStore.getState().getCurrentTickTime();
+    const trade: Trade = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'buy',
+      price,
+      time: backtestTime || (Date.now() / 1000),
+      quantity
+    };
+
+    set((state) => ({ tradeHistory: [...state.tradeHistory, trade] }));
   },
 
   sell: (price: number) => {
@@ -217,6 +246,18 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         hasTraded: true
       }));
     }
+
+    // Record trade
+    const backtestTime = useBacktestStore.getState().getCurrentTickTime();
+    const trade: Trade = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'sell',
+      price,
+      time: backtestTime || (Date.now() / 1000),
+      quantity
+    };
+
+    set((state) => ({ tradeHistory: [...state.tradeHistory, trade] }));
   },
 
   flat: (price: number) => {
@@ -242,6 +283,18 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       takeProfit: null,
       stopLoss: null
     }));
+
+    // Record close trade
+    const backtestTime = useBacktestStore.getState().getCurrentTickTime();
+    const trade: Trade = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: position === 'long' ? 'sell' : 'buy',
+      price,
+      time: backtestTime || (Date.now() / 1000),
+      quantity: activePositionSize
+    };
+
+    set((state) => ({ tradeHistory: [...state.tradeHistory, trade] }));
   },
 
   updateUnrealizedPnL: (currentPrice: number) => {
@@ -314,6 +367,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     takeProfit: null,
     stopLoss: null,
     isBlown: false,
-    hasTraded: false
+    hasTraded: false,
+    tradeHistory: []
   }))
 }));

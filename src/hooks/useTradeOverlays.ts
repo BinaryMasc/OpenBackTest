@@ -3,7 +3,10 @@ import type { Chart, OverlayEvent } from 'klinecharts';
 import { useTradeStore } from '../store/useTradeStore';
 
 export function useTradeOverlays(chartRef: React.MutableRefObject<Chart | null>) {
-  const { position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss } = useTradeStore();
+  const { 
+    position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, 
+    tradeHistory, showTradeHistory 
+  } = useTradeStore();
   const setTakeProfit = useTradeStore(state => state.setTakeProfit);
   const setStopLoss = useTradeStore(state => state.setStopLoss);
 
@@ -108,5 +111,19 @@ export function useTradeOverlays(chartRef: React.MutableRefObject<Chart | null>)
         chart.removeOverlay({ id: 'slLine_overlay' });
       }
     }
-  }, [chartRef, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss]);
+
+    // Sync trade history
+    chart.removeOverlay({ groupId: 'trade_history_group' });
+    if (showTradeHistory && tradeHistory.length > 0) {
+      tradeHistory.forEach(trade => {
+        chart.createOverlay({
+          id: `trade_${trade.id}`,
+          name: 'tradeArrow',
+          groupId: 'trade_history_group',
+          extendData: trade.type,
+          points: [{ timestamp: trade.time * 1000, value: trade.price }]
+        });
+      });
+    }
+  }, [chartRef, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, showTradeHistory]);
 }
