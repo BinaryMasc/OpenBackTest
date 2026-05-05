@@ -1,4 +1,4 @@
-import { Settings, History, Check, ChevronDown } from 'lucide-react';
+import { Settings, History, Check, ChevronDown, Play, Pause, ChevronRight, ChevronsRight } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useBacktestStore } from '../../store/useBacktestStore';
 import { useTradeStore } from '../../store/useTradeStore';
@@ -11,6 +11,13 @@ export function SymbolLegend() {
   const symbol = useBacktestStore(state => state.symbol) || 'NO SYMBOL';
   const timeframe = useBacktestStore(state => state.timeframe);
   const setTimeframe = useBacktestStore(state => state.setTimeframe);
+  const isPlaying = useBacktestStore(state => state.isPlaying);
+  const togglePlayback = useBacktestStore(state => state.togglePlayback);
+  const stepForward = useBacktestStore(state => state.stepForward);
+  const fastForward = useBacktestStore(state => state.fastForward);
+  const rawData = useBacktestStore(state => state.rawData);
+  //const mode = useBacktestStore(state => state.mode);
+
   const showTradeHistory = useTradeStore(state => state.showTradeHistory);
   const setShowTradeHistory = useTradeStore(state => state.setShowTradeHistory);
 
@@ -38,6 +45,9 @@ export function SymbolLegend() {
         <span className="text-sm font-bold text-slate-100 tracking-tight mr-1">
           {symbol}
         </span>
+
+        <div className="w-px h-3 bg-dark-700/50 mx-1" />
+
 
         <div className="relative bg-dark-700/50" ref={tfRef}>
           <button
@@ -67,6 +77,41 @@ export function SymbolLegend() {
         </div>
 
         <div className="w-px h-3 bg-dark-700/50 mx-1" />
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={togglePlayback}
+            disabled={rawData.length === 0}
+            className={`p-2 rounded-md transition-all ${isPlaying
+              ? 'text-danger hover:bg-danger/10'
+              : 'text-blue-500 hover:bg-emerald-500/10'
+              } disabled:opacity-30 disabled:cursor-not-allowed`}
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+          </button>
+
+          <button
+            onClick={stepForward}
+            disabled={rawData.length === 0 || isPlaying}
+            className="p-2 rounded-md text-slate-400 hover:text-slate-100 hover:bg-dark-700 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Step Forward"
+          >
+            <ChevronRight size={18} />
+          </button>
+
+          <button
+            onClick={fastForward}
+            disabled={rawData.length === 0 || isPlaying}
+            className="p-2 rounded-md text-slate-400 hover:text-slate-100 hover:bg-dark-700 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Fast Forward (+10)"
+          >
+            <ChevronsRight size={18} />
+
+          </button>
+          <div className="w-px h-3 bg-dark-700/50 mx-1" />
+        </div>
+
 
         <button
           onClick={() => setIsOpen(!isOpen)}
