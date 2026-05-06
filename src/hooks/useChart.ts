@@ -3,6 +3,7 @@ import { init, dispose, type Chart, TooltipShowRule } from 'klinecharts';
 import type { Candle, Timeframe } from '../types';
 import { CHART_CONTAINER_ID } from '../lib/chart/constants';
 import { registerCustomOverlays } from '../lib/chart/overlays';
+import { registerCustomIndicators } from '../lib/chart/customIndicators';
 
 interface UseChartOptions {
   aggregatedData: Candle[];
@@ -18,6 +19,7 @@ export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
   useEffect(() => {
     if (!containerRef.current) return;
     registerCustomOverlays();
+    registerCustomIndicators();
     const chart = init(CHART_CONTAINER_ID);
     if (chart) {
       chartRef.current = chart;
