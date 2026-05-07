@@ -10,7 +10,7 @@ export function TradingPanel() {
     leverage, initialBalance, /*marginBlowoutPercent, */ contractSize, feePercent, isBlown, hasTraded,
     buy, sell, flat, updateUnrealizedPnL, setOrderSize, setTakeProfit, setStopLoss,
     setLeverage, setInitialBalance, /*setMarginBlowoutPercent, */ setContractSize, setFeePercent,
-    reset
+    reset, finishSimulation, isFinished, setShowStatsModal
   } = useTradeStore();
 
   const { rawData, currentIndex } = useBacktestStore();
@@ -299,6 +299,23 @@ export function TradingPanel() {
       >
         Reset Simulation
       </button>
+
+      {isFinished ? (
+        <button
+          onClick={() => setShowStatsModal(true)}
+          className="w-full mt-2 flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 text-white py-2.5 rounded-lg font-bold transition-all text-xs shadow-lg shadow-primary-900/20 active:scale-95"
+        >
+          <BarChart3 size={14} />
+          View Statistics
+        </button>
+      ) : (
+        <button
+          onClick={() => finishSimulation()}
+          className="w-full mt-2 flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white py-2.5 rounded-lg font-bold transition-all text-xs active:scale-95"
+        >
+          Finish Simulation
+        </button>
+      )}
 
     </div>
   );

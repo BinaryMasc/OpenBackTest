@@ -1,5 +1,6 @@
 import { Controls } from './components/Controls';
 import { TradingChart } from './components/TradingChart';
+import { StatsModal } from './components/StatsModal';
 //import { useBacktestStore } from './store/useBacktestStore';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           </div>
         </div>
       </main>
+      <StatsModal />
     </div>
   );
 }

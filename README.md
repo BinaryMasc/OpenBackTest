@@ -13,12 +13,15 @@ Check the [Codebase Guide](CODEBASE.md) for a detailed file-by-file documentatio
 ![Trade Panel](/public/simulation.png)
 
 
+**Simulation Statistics**
+![Simulation Statistics](/public/simulation_metrics.png)
+
 ### Features
 - Simulate market data realtime.
-- You can backtest with your trading strategy.
+- Backtest with your trading strategy.
 - Backtest analysis tools to improve your trading skills.
-- Allows you to import historical data and visualize it on a chart.
-- You can also draw on the chart and add indicators to analyze the data.
+- Import historical data and visualize it on a chart.
+- Draw on the chart and add indicators to analyze the data.
 
 ### Data import format
 
