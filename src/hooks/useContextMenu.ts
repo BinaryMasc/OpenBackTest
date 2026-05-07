@@ -35,7 +35,7 @@ export function useContextMenu({
     const y = e.clientY - bounding.top;
 
     const result = chart.convertFromPixel([{ x, y }], { paneId: 'candle_pane' });
-    const point = result[0];
+    const point = Array.isArray(result) ? result[0] : result;
     if (point && point.value !== undefined) {
       setContextMenu({ x: e.clientX, y: e.clientY, price: point.value });
     }
