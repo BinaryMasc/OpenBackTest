@@ -66,7 +66,7 @@ export function useTradeOverlays(chartRef: React.MutableRefObject<Chart | null>)
       if (takeProfit !== null) {
         const tpPnl = calcPnL(takeProfit);
         const tpPnlStr = tpPnl >= 0 ? `+${tpPnl.toFixed(2)}` : tpPnl.toFixed(2);
-        chart.createOverlay({
+        const tpData = {
           id: 'tpLine_overlay',
           name: 'tpLine',
           extendData: `TP: ${takeProfit.toFixed(2)} (${tpPnlStr})`,
@@ -82,7 +82,13 @@ export function useTradeOverlays(chartRef: React.MutableRefObject<Chart | null>)
             if (val !== undefined) setTakeProfit(val);
             return false;
           }
-        });
+        };
+
+        if (chart.getOverlayById('tpLine_overlay')) {
+          chart.overrideOverlay(tpData);
+        } else {
+          chart.createOverlay(tpData);
+        }
       } else {
         chart.removeOverlay({ id: 'tpLine_overlay' });
       }
@@ -90,7 +96,7 @@ export function useTradeOverlays(chartRef: React.MutableRefObject<Chart | null>)
       if (stopLoss !== null) {
         const slPnl = calcPnL(stopLoss);
         const slPnlStr = slPnl >= 0 ? `+${slPnl.toFixed(2)}` : slPnl.toFixed(2);
-        chart.createOverlay({
+        const slData = {
           id: 'slLine_overlay',
           name: 'slLine',
           extendData: `SL: ${stopLoss.toFixed(2)} (${slPnlStr})`,
@@ -106,7 +112,13 @@ export function useTradeOverlays(chartRef: React.MutableRefObject<Chart | null>)
             if (val !== undefined) setStopLoss(val);
             return false;
           }
-        });
+        };
+
+        if (chart.getOverlayById('slLine_overlay')) {
+          chart.overrideOverlay(slData);
+        } else {
+          chart.createOverlay(slData);
+        }
       } else {
         chart.removeOverlay({ id: 'slLine_overlay' });
       }

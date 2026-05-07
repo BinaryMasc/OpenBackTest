@@ -15,6 +15,9 @@ import { IndicatorLegend } from './IndicatorLegend';
 import { OverlayEditor } from './OverlayEditor';
 import { useTradeOverlays } from '../../hooks/useTradeOverlays';
 import { SymbolLegend } from './SymbolLegend';
+import { ContextMenu } from './ContextMenu';
+import { useTradeStore } from '../../store/useTradeStore';
+import { useContextMenu } from '../../hooks/useContextMenu';
 
 export function TradingChart() {
   const rawData = useBacktestStore(state => state.rawData);
@@ -33,6 +36,21 @@ export function TradingChart() {
   const [overlayColor, setOverlayColor] = useState('#2196F3');
   const [overlayOpacity, setOverlayOpacity] = useState(0.5);
   const [overlayFontSize, setOverlayFontSize] = useState(12);
+
+  const position = useTradeStore(state => state.position);
+  const setTakeProfit = useTradeStore(state => state.setTakeProfit);
+  const setStopLoss = useTradeStore(state => state.setStopLoss);
+  
+  const currentPrice = rawData[currentIndex]?.close || 0;
+
+  const { contextMenu, setContextMenu, handleContextMenu, contextMenuGroups } = useContextMenu({
+    chartRef,
+    containerRef,
+    position,
+    currentPrice,
+    setTakeProfit,
+    setStopLoss
+  });
 
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();
 
@@ -119,6 +137,7 @@ export function TradingChart() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [chartRef, selectedOverlay, undo, redo, recordRemove, selectedForDeleteRef]);
 
+
   return (
     <div className="w-full h-full flex flex-col bg-dark-900 text-slate-300">
       {/* Top Header Bar */}
@@ -141,7 +160,7 @@ export function TradingChart() {
           }
         />
 
-        <div className="flex-1 relative w-full h-full">
+        <div className="flex-1 relative w-full h-full" onContextMenu={handleContextMenu}>
           <ChartContainer containerRef={containerRef} />
 
           {/* Top-left indicator legend */}
@@ -189,6 +208,16 @@ export function TradingChart() {
               onRemove={handleOverlayRemove}
               onClose={() => setSelectedOverlay(null)}
               chartRef={chartRef}
+            />
+          )}
+
+          {contextMenu && (
+            <ContextMenu
+              x={contextMenu.x}
+              y={contextMenu.y}
+              price={contextMenu.price}
+              groups={contextMenuGroups}
+              onClose={() => setContextMenu(null)}
             />
           )}
         </div>
