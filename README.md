@@ -4,6 +4,8 @@
 
 A manual backtest open-source tool Client-Side Only.
 
+Check the [Codebase Guide](CODEBASE.md) for a detailed file-by-file documentation.
+
 **Playback**
 ![Playback](/public/playback.png)
 
