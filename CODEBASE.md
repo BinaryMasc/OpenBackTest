@@ -36,6 +36,7 @@ UI components categorized by functional area.
 - **`Controls.tsx`**: Top navigation and data loading controls.
 - **`PlaybackBar.tsx`**: The bottom timeline and playback controls.
 - **`TradingPanel.tsx`**: The right-side panel for trade execution and account status.
+- **`StatsModal.tsx`**: Performance analysis dashboard with equity curve and export features.
 
 ### `src/hooks`
 Custom React hooks encapsulating complex logic.
@@ -47,7 +48,7 @@ Custom React hooks encapsulating complex logic.
 ### `src/store`
 Zustand stores defining the global state and actions.
 - **`useBacktestStore.ts`**: Controls data playback (Play/Pause/Step), symbol selection, and timeframe management.
-- **`useTradeStore.ts`**: Core trading engine. Manages positions, orders, PnL calculations, and trade history.
+- **`useTradeStore.ts`**: Core trading engine. Manages positions, orders, PnL calculations, trade history, and session statistics.
 
 ### `src/lib/chart`
 Low-level extensions for KlineCharts.
@@ -68,7 +69,8 @@ Low-level extensions for KlineCharts.
 | `src/App.tsx` | Main application shell and layout. |
 | `src/hooks/useChart.ts` | Initializes chart, handles data updates, and manages responsive resizing. |
 | `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, and `loadData`. |
-| `src/store/useTradeStore.ts` | Executes `buy`, `sell`, and `flat` orders; tracks account equity and leverage. |
+| `src/store/useTradeStore.ts` | Executes trades; tracks account equity, leverage, and aggregates positions for statistics. |
+| `src/components/StatsModal.tsx` | Calculates and displays Win Rate, Profit Factor, R/R, and Equity Curve; handles CSV exports. |
 | `src/lib/chart/customIndicators.ts` | Mathematical logic for indicators not natively supported by KlineCharts. |
 | `src/components/TradingChart/ContextMenu.tsx` | UI for the right-click menu (Set TP/SL, Reset View). |
 | `src/components/TradingChart/DrawingToolbar.tsx` | Left-side sidebar for chart annotation tools (Lines, Measures). |
@@ -86,21 +88,23 @@ Low-level extensions for KlineCharts.
 - **Modifying Trading Logic**:
   - Edit `src/store/useTradeStore.ts` for execution logic.
   - Edit `src/hooks/useTradeOverlays.ts` to change how positions look on the chart.
-- **Updating UI Theme**:
-  - Global styles are in `src/index.css`.
-  - Component-specific styles are often inline or in `App.css`.
+- **Adjusting Statistics & Reporting**:
+  - Statistics are calculated in `src/components/StatsModal.tsx` using `finishedPositions` from the trade store.
+  - To add new metrics, update the `Position` interface in `useTradeStore.ts` and the calculation logic in `StatsModal.tsx`.
 
 ### Search Keywords
 - `KlineCharts`: For chart API questions.
 - `Zustand`: For state management patterns.
 - `VPVR`: For Volume Profile logic.
 - `useBacktestStore`: For playback control.
+- `StatsModal`: For performance metrics and reporting.
 
 ### State Flow
 1. **Data Source**: CSV/JSON loaded into `useBacktestStore`.
 2. **Aggregation**: `useBacktestStore` uses `aggregation.ts` to prepare data for the current timeframe.
 3. **Rendering**: `useChart` detects data changes and calls `chart.applyNewData()`.
 4. **Interaction**: User actions trigger `useTradeStore`, which updates overlays via `useTradeOverlays`.
+5. **Completion**: When a simulation is finished, `useTradeStore` aggregates all trades into `finishedPositions` and triggers the `StatsModal`.
 
 ## Architecture Mapping
 
@@ -111,11 +115,12 @@ graph TD
         App["App.tsx"]
         Controls["Controls.tsx"]
         ChartUI["TradingChart/index.tsx"]
+        Stats["StatsModal.tsx"]
     end
 
     subgraph Logic ["Logic & State (Zustand)"]
         BS["useBacktestStore (Playback)"]
-        TS["useTradeStore (Execution)"]
+        TS["useTradeStore (Execution & Stats)"]
     end
 
     subgraph Bridge ["Bridge Hooks (Glue)"]
@@ -130,10 +135,12 @@ graph TD
     end
 
     %% Mapping
-    App --> Controls & ChartUI
+    App --> Controls & ChartUI & Stats
     Controls --> BS & TS
     ChartUI --> UC & UIH & UT
+    Stats --> TS
     UC & UIH & UT --> KC
     KC <--> Lib
     BS --> Agg["aggregation.ts"]
 ```
+
