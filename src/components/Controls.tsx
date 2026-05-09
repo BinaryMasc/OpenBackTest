@@ -11,6 +11,7 @@ const PRESETS = [
   { name: 'BTC/USDT 1m (2025-2026)', filename: 'btc_usdt_m1_jan2025-apr2026.csv' },
   { name: 'ETH/USDT 1m (2025-2026)', filename: 'eth_usdt_m1_jan2025-apr2026.csv' },
   { name: 'Nasdaq 1m (09-2025)', filename: 'nasdaq-09-2025.csv' },
+  { name: 'Nasdaq 1m (2022-2025)', filename: 'nasdaq_m1_2022-2025.csv' },
   { name: 'XAUUSDT Perp 1m (01-2026 - 05-2026)', filename: 'xauusdt_m1_jan2026-may2026.csv' },
 ];
 
