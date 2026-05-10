@@ -75,6 +75,14 @@ export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
   }, [aggregatedData, timeframe]);
 
   useEffect(() => {
+    const handleResize = () => {
+      chartRef.current?.resize();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver(() => {
       chartRef.current?.resize();
