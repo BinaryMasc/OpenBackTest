@@ -38,5 +38,8 @@ npm run dev
 ```
 
 ### To-Do
+- [ ] Session: Import/export current session and trades to continue later.
 - [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
-- [ ] Import/export current session and trades to continue later.
+- [ ] Chart: Ability to change the color of the candles.
+- [ ] Data: Real-time connection to live market (Crypto).
+- [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies.
