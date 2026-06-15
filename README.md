@@ -36,3 +36,7 @@ npm install
 npm run build
 npm run dev
 ```
+
+### To-Do
+- [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
+- [ ] Import/export current session and trades to continue later.
