@@ -16,6 +16,7 @@ export function CandleStyleEditor({ onClose }: CandleStyleEditorProps) {
     downBorderColor,
     upWickColor,
     downWickColor,
+    backgroundColor,
     setColors,
     reset,
   } = useChartStyleStore();
@@ -136,6 +137,23 @@ export function CandleStyleEditor({ onClose }: CandleStyleEditorProps) {
               className="w-10 h-6 cursor-pointer rounded bg-dark-700 border border-dark-600 shrink-0"
             />
             <span className="text-xs text-slate-400">Wick Color</span>
+          </div>
+        </div>
+        {/* Divider */}
+        <div className="h-px bg-dark-700" />
+
+        {/* Chart Background settings */}
+        <div className="space-y-2.5">
+          <div className="text-xs font-semibold uppercase tracking-wider text-primary-400">Chart Settings</div>
+          
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={backgroundColor}
+              onChange={e => setColors({ backgroundColor: e.target.value })}
+              className="w-10 h-6 cursor-pointer rounded bg-dark-700 border border-dark-600 shrink-0"
+            />
+            <span className="text-xs text-slate-400">Background Color</span>
           </div>
         </div>
 

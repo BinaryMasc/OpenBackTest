@@ -8,6 +8,7 @@ interface ChartStyleState {
   downBorderColor: string;
   upWickColor: string;
   downWickColor: string;
+  backgroundColor: string;
   isEditorOpen: boolean;
 
   setColors: (colors: Partial<Omit<ChartStyleState, 'isEditorOpen' | 'setColors' | 'setEditorOpen' | 'reset'>>) => void;
@@ -22,6 +23,7 @@ const DEFAULT_STYLE = {
   downBorderColor: '#F92855',
   upWickColor: '#2DC08E',
   downWickColor: '#F92855',
+  backgroundColor: '#0f172a',
 };
 
 export const useChartStyleStore = create<ChartStyleState>()(
@@ -43,6 +45,7 @@ export const useChartStyleStore = create<ChartStyleState>()(
         downBorderColor: state.downBorderColor,
         upWickColor: state.upWickColor,
         downWickColor: state.downWickColor,
+        backgroundColor: state.backgroundColor,
       }),
     }
   )
