@@ -18,11 +18,18 @@ import { SymbolLegend } from './SymbolLegend';
 import { ContextMenu } from './ContextMenu';
 import { useTradeStore } from '../../store/useTradeStore';
 import { useContextMenu } from '../../hooks/useContextMenu';
+import { CandleStyleEditor } from './CandleStyleEditor';
+import { useChartStyleStore } from '../../store/useChartStyleStore';
+
 
 export function TradingChart() {
   const rawData = useBacktestStore(state => state.rawData);
   const currentIndex = useBacktestStore(state => state.currentIndex);
   const timeframe = useBacktestStore(state => state.timeframe);
+
+  const isEditorOpen = useChartStyleStore(state => state.isEditorOpen);
+  const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
+
 
   const aggregatedData = useMemo(() => {
     if (rawData.length === 0 || currentIndex === -1) return [];
@@ -210,6 +217,12 @@ export function TradingChart() {
               chartRef={chartRef}
             />
           )}
+
+          {/* Candle style editor */}
+          {isEditorOpen && (
+            <CandleStyleEditor onClose={() => setEditorOpen(false)} />
+          )}
+
 
           {contextMenu && (
             <ContextMenu

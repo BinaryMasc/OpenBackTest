@@ -49,6 +49,7 @@ Custom React hooks encapsulating complex logic.
 Zustand stores defining the global state and actions.
 - **`useBacktestStore.ts`**: Controls data playback (Play/Pause/Step), symbol selection, and timeframe management.
 - **`useTradeStore.ts`**: Core trading engine. Manages positions, orders, PnL calculations, trade history, and session statistics.
+- **`useChartStyleStore.ts`**: Manages styling properties for the chart, such as bullish/bearish candle colors, and persists user settings in localStorage.
 
 ### `src/lib/chart`
 Low-level extensions for KlineCharts.
@@ -70,6 +71,8 @@ Low-level extensions for KlineCharts.
 | `src/hooks/useChart.ts` | Initializes chart, handles data updates, and manages responsive resizing. |
 | `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, and `loadData`. |
 | `src/store/useTradeStore.ts` | Executes trades; tracks account equity, leverage, and aggregates positions for statistics. |
+| `src/store/useChartStyleStore.ts` | Central store managing persistent chart styles and styling properties. |
+| `src/components/TradingChart/CandleStyleEditor.tsx` | Floating overlay editor for bullish/bearish candle, border, and wick colors. |
 | `src/components/StatsModal.tsx` | Calculates and displays Win Rate, Profit Factor, R/R, and Equity Curve; handles CSV exports. |
 | `src/lib/chart/customIndicators.ts` | Mathematical logic for indicators not natively supported by KlineCharts. |
 | `src/components/TradingChart/ContextMenu.tsx` | UI for the right-click menu (Set TP/SL, Reset View). |
@@ -115,12 +118,14 @@ graph TD
         App["App.tsx"]
         Controls["Controls.tsx"]
         ChartUI["TradingChart/index.tsx"]
+        CandleEditor["TradingChart/CandleStyleEditor.tsx"]
         Stats["StatsModal.tsx"]
     end
 
     subgraph Logic ["Logic & State (Zustand)"]
         BS["useBacktestStore (Playback)"]
         TS["useTradeStore (Execution & Stats)"]
+        CSS["useChartStyleStore (Styles)"]
     end
 
     subgraph Bridge ["Bridge Hooks (Glue)"]
@@ -137,9 +142,11 @@ graph TD
     %% Mapping
     App --> Controls & ChartUI & Stats
     Controls --> BS & TS
-    ChartUI --> UC & UIH & UT
+    ChartUI --> UC & UIH & UT & CandleEditor
+    CandleEditor --> CSS
     Stats --> TS
     UC & UIH & UT --> KC
+    UC --> CSS
     KC <--> Lib
     BS --> Agg["aggregation.ts"]
 ```
