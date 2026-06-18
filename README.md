@@ -38,7 +38,8 @@ npm run dev
 ```
 
 ### To-Do
-- [ ] Session: Import/export current session and trades to continue later.
+- [x] Session: Import/export current session and trades to continue later.
+- [ ] Backtest Data: Show more statistics, calendar view, etc...
 - [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
 - [x] Chart: Ability to change the color of the candles.
 - [ ] Data: Real-time connection to live market (Crypto).
