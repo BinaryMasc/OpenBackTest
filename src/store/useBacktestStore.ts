@@ -26,6 +26,7 @@ interface BacktestState {
   fastForward: () => void;
   setMode: (mode: 'playback' | 'simulation') => void;
   getCurrentTickTime: () => number | null;
+  importState: (state: Partial<BacktestState>) => void;
 }
 
 export const useBacktestStore = create<BacktestState>((set, get) => ({
@@ -83,5 +84,7 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     const { rawData, currentIndex } = get();
     if (rawData.length === 0 || currentIndex === -1) return null;
     return rawData[currentIndex].time;
-  }
+  },
+
+  importState: (state: Partial<BacktestState>) => set((prev) => ({ ...prev, ...state }))
 }));

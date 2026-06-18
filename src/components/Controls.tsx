@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown } from 'lucide-react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
@@ -22,7 +22,9 @@ export function Controls() {
   } = useBacktestStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sessionInputRef = useRef<HTMLInputElement>(null);
   const [isPresetsExpanded, setIsPresetsExpanded] = useState(true);
+  const [isSessionExpanded, setIsSessionExpanded] = useState(false);
 
   // Auto-play logic
   useEffect(() => {
@@ -127,6 +129,80 @@ export function Controls() {
     }
   };
 
+  const handleExportSession = () => {
+    const backtestState = useBacktestStore.getState();
+    const tradeState = useTradeStore.getState();
+
+    const session = {
+      backtest: {
+        symbol: backtestState.symbol,
+        currentIndex: backtestState.currentIndex,
+        timeframe: backtestState.timeframe,
+        playbackSpeed: backtestState.playbackSpeed,
+        mode: backtestState.mode
+      },
+      trade: {
+        balance: tradeState.balance,
+        realizedPnL: tradeState.realizedPnL,
+        unrealizedPnL: tradeState.unrealizedPnL,
+        position: tradeState.position,
+        entryPrice: tradeState.entryPrice,
+        activePositionSize: tradeState.activePositionSize,
+        orderSize: tradeState.orderSize,
+        takeProfit: tradeState.takeProfit,
+        stopLoss: tradeState.stopLoss,
+        leverage: tradeState.leverage,
+        initialBalance: tradeState.initialBalance,
+        marginBlowoutPercent: tradeState.marginBlowoutPercent,
+        contractSize: tradeState.contractSize,
+        feePercent: tradeState.feePercent,
+        isBlown: tradeState.isBlown,
+        hasTraded: tradeState.hasTraded,
+        tradeHistory: tradeState.tradeHistory,
+        isFinished: tradeState.isFinished,
+        finishedPositions: tradeState.finishedPositions,
+        currentPositionTrades: tradeState.currentPositionTrades
+      }
+    };
+
+    const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `openbacktest_session_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportSession = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const session = JSON.parse(event.target?.result as string);
+        if (session.backtest && session.trade) {
+          if (useBacktestStore.getState().rawData.length === 0) {
+            alert('Please load the CSV data first before importing the session.');
+            return;
+          }
+          useBacktestStore.getState().importState(session.backtest);
+          useTradeStore.getState().importState(session.trade);
+        } else {
+          alert('Invalid session file format.');
+        }
+      } catch (err) {
+        alert('Failed to parse session file.');
+      }
+      
+      if (sessionInputRef.current) {
+        sessionInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const currentCandle = rawData[currentIndex];
   const currentDate = currentCandle
     ? new Date(currentCandle.time * 1000).toISOString().replace('T', ' ').substring(0, 19)
@@ -185,6 +261,47 @@ export function Controls() {
               Simulation
             </button>
           </div>
+        </div>
+
+        {/* Session Management */}
+        <div className="mb-6 space-y-2">
+          <button
+            onClick={() => setIsSessionExpanded(!isSessionExpanded)}
+            className="w-full flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-widest mb-3 hover:text-slate-300 transition-colors group"
+          >
+            Session Management
+            <ChevronDown
+              size={14}
+              className={`transition-transform duration-200 ${isSessionExpanded ? '' : '-rotate-90'}`}
+            />
+          </button>
+          
+          {isSessionExpanded && (
+            <div className="flex gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+              <button
+                onClick={handleExportSession}
+                disabled={rawData.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-2 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+              >
+                <Download size={14} />
+                Export
+              </button>
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                ref={sessionInputRef}
+                onChange={handleImportSession}
+              />
+              <button
+                onClick={() => sessionInputRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-2 rounded-lg transition-colors border border-slate-600/50 text-xs font-medium"
+              >
+                <UploadCloud size={14} />
+                Import
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Data Source */}

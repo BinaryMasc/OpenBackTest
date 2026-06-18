@@ -72,6 +72,7 @@ interface TradeState {
   reset: () => void;
   finishSimulation: () => void;
   setShowStatsModal: (show: boolean) => void;
+  importState: (state: Partial<TradeState>) => void;
 }
 
 export const useTradeStore = create<TradeState>((set, get) => ({
@@ -676,5 +677,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     }
 
     set({ isFinished: true, showStatsModal: true });
-  }
+  },
+
+  importState: (state: Partial<TradeState>) => set((prev) => ({ ...prev, ...state }))
 }));

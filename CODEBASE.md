@@ -33,7 +33,7 @@ The codebase follows a **Decoupled Bridge Architecture**:
 ### `src/components`
 UI components categorized by functional area.
 - **`TradingChart/`**: All components related to the chart interface (overlays, menus, legends).
-- **`Controls.tsx`**: Top navigation and data loading controls.
+- **`Controls.tsx`**: Top navigation, data loading controls, and session import/export management.
 - **`PlaybackBar.tsx`**: The bottom timeline and playback controls.
 - **`TradingPanel.tsx`**: The right-side panel for trade execution and account status.
 - **`StatsModal.tsx`**: Performance analysis dashboard with equity curve and export features.
@@ -150,4 +150,66 @@ graph TD
     KC <--> Lib
     BS --> Agg["aggregation.ts"]
 ```
+
+## External Data Integration
+
+### Importing Third-Party Trade Data
+Import trades from another platform and analyze them using OpenBackTest's Statistics Modal. Construct a JSON file that mimics the internal session state. Load a CSV file into the application before importing the JSON session file.
+
+JSON structure required to populate the statistics:
+
+```json
+{
+  "backtest": {},
+  "trade": {
+    "initialBalance": 10000,
+    "isFinished": true,
+    "showStatsModal": true,
+    "tradeHistory": [
+      {
+        "id": "trade-1",
+        "type": "buy",
+        "price": 50000,
+        "time": 1704067200,
+        "quantity": 1,
+        "realizedPnL": 0,
+        "positionSize": 1,
+        "entryPrice": 50000,
+        "balance": 10000
+      },
+      {
+        "id": "trade-2",
+        "type": "sell",
+        "price": 51000,
+        "time": 1704070800,
+        "quantity": 1,
+        "realizedPnL": 1000,
+        "positionSize": 0,
+        "entryPrice": null,
+        "balance": 11000
+      }
+    ],
+    "finishedPositions": [
+      {
+        "id": "pos-1",
+        "type": "long",
+        "entryPrice": 50000,
+        "exitPrice": 51000,
+        "quantity": 1,
+        "pnl": 1000,
+        "openTime": 1704067200,
+        "closeTime": 1704070800,
+        "trades": []
+      }
+    ]
+  }
+}
+
+```
+
+**Key Fields to Map:**
+*   **`initialBalance`**: Your starting account equity.
+*   **`isFinished` & `showStatsModal`**: Set to `true` to immediately open the dashboard.
+*   **`finishedPositions`**: Powers core stats (Win Rate, PnL, Drawdown, Profit Factor).
+*   **`tradeHistory`**: Powers the "Trade Log" export and "Backtest from/to" dates (can be empty if not needed).
 
