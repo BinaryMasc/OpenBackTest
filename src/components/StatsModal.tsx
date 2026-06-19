@@ -21,21 +21,47 @@ export function StatsModal() {
   const avgLoss = losingPositions.length > 0 ? totalLoss / losingPositions.length : 0;
   const rr = avgLoss > 0 ? avgWin / avgLoss : 0;
 
-  const netProfit = finishedPositions.reduce((acc, p) => acc + p.pnl, 0);
+  // Use tradeHistory as the source of truth when available.
+  // Position.pnl may only include the closing trade's realizedPnL (missing opening fees),
+  // and position.trades may contain string IDs instead of actual trade objects.
+  // The tradeHistory balance field provides the accurate running account balance.
+  const totalFees = tradeHistory.reduce((acc, t) => acc + (t.fee || 0), 0);
 
-  // Equity Curve Calculation
+  // Net profit: prefer tradeHistory's last balance (ground truth) over summing position pnl
+  const netProfit = tradeHistory.length > 0
+    ? tradeHistory[tradeHistory.length - 1].balance - initialBalance
+    : finishedPositions.reduce((acc, p) => acc + p.pnl, 0);
+
+  const bruteProfit = netProfit + totalFees;
+
+  // Equity Curve: built from tradeHistory balance at each position close (positionSize === 0)
   const equityCurve = [initialBalance];
-  let currentEquity = initialBalance;
   let maxEquity = initialBalance;
   let maxDrawdown = 0;
 
-  finishedPositions.forEach(p => {
-    currentEquity += p.pnl;
-    equityCurve.push(currentEquity);
-    if (currentEquity > maxEquity) maxEquity = currentEquity;
-    const drawdown = maxEquity - currentEquity;
-    if (drawdown > maxDrawdown) maxDrawdown = drawdown;
-  });
+  if (tradeHistory.length > 0) {
+    // Use the balance after each position-closing trade for the equity curve
+    const closingBalances = tradeHistory
+      .filter(t => t.positionSize === 0)
+      .map(t => t.balance);
+
+    closingBalances.forEach(bal => {
+      equityCurve.push(bal);
+      if (bal > maxEquity) maxEquity = bal;
+      const drawdown = maxEquity - bal;
+      if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+    });
+  } else {
+    // Fallback: use finishedPositions pnl (less accurate but works without tradeHistory)
+    let currentEquity = initialBalance;
+    finishedPositions.forEach(p => {
+      currentEquity += p.pnl;
+      equityCurve.push(currentEquity);
+      if (currentEquity > maxEquity) maxEquity = currentEquity;
+      const drawdown = maxEquity - currentEquity;
+      if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+    });
+  }
 
   const maxDrawdownPercent = (maxDrawdown / initialBalance) * 100;
 
@@ -60,7 +86,9 @@ export function StatsModal() {
       Action: t.type.toUpperCase(),
       Price: t.price.toFixed(2),
       Quantity: t.quantity.toFixed(4),
-      'Realized PnL': t.realizedPnL.toFixed(2),
+      Fee: (t.fee || 0).toFixed(2),
+      'Gross PnL': (t.realizedPnL + (t.fee || 0)).toFixed(2),
+      'Net PnL': t.realizedPnL.toFixed(2),
       'Position Size': t.positionSize.toFixed(4),
       'Entry Price': t.entryPrice ? t.entryPrice.toFixed(2) : '-',
       Balance: t.balance.toFixed(2),
@@ -170,9 +198,14 @@ export function StatsModal() {
             <div className="bg-dark-900/50 rounded-xl p-6 border border-dark-700/50">
               <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Detailed Metrics</h3>
               <div className="space-y-4">
+                <MetricRow label="Initial Balance" value={`$${initialBalance.toFixed(2)}`} color="text-slate-200" />
+                <MetricRow label="Final Balance" value={`$${(initialBalance + netProfit).toFixed(2)}`} color="text-slate-200" />
+                <MetricRow label="Gross Profit" value={`$${bruteProfit.toFixed(2)}`} color={bruteProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+
                 <MetricRow label="Avg Winning Trade" value={`$${avgWin.toFixed(2)}`} color="text-emerald-400" />
                 <MetricRow label="Avg Losing Trade" value={`-$${avgLoss.toFixed(2)}`} color="text-red-400" />
                 <MetricRow label="Math Expectancy" value={`$${expectancy.toFixed(2)}`} color={expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                <MetricRow label="Total Fees Paid" value={`$${totalFees.toFixed(2)}`} color="text-red-400" />
                 <MetricRow label="Max Drawdown ($)" value={`-$${maxDrawdown.toFixed(2)}`} color="text-red-400" />
                 <MetricRow label="Max Drawdown (%)" value={`${maxDrawdownPercent.toFixed(2)}%`} color="text-red-400" />
                 <MetricRow label="Total Positions" value={totalPositions.toString()} color="text-slate-200" />

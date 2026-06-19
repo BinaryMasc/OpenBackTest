@@ -172,6 +172,7 @@ JSON structure required to populate the statistics:
         "price": 50000,
         "time": 1704067200,
         "quantity": 1,
+        "fee": 0,
         "realizedPnL": 0,
         "positionSize": 1,
         "entryPrice": 50000,
@@ -183,6 +184,7 @@ JSON structure required to populate the statistics:
         "price": 51000,
         "time": 1704070800,
         "quantity": 1,
+        "fee": 10,
         "realizedPnL": 1000,
         "positionSize": 0,
         "entryPrice": null,
@@ -210,6 +212,6 @@ JSON structure required to populate the statistics:
 **Key Fields to Map:**
 *   **`initialBalance`**: Your starting account equity.
 *   **`isFinished` & `showStatsModal`**: Set to `true` to immediately open the dashboard.
-*   **`finishedPositions`**: Powers core stats (Win Rate, PnL, Drawdown, Profit Factor).
-*   **`tradeHistory`**: Powers the "Trade Log" export and "Backtest from/to" dates (can be empty if not needed).
+*   **`finishedPositions`**: Powers core stats (Win Rate, PnL, Drawdown, Profit Factor). The `pnl` field should be the **gross** profit/loss (before fees). The `trades` array should be left empty (`[]`) for imported data.
+*   **`tradeHistory`**: Powers the "Trade Log" export, "Backtest from/to" dates, and fee calculations. Fees in `tradeHistory` entries are automatically subtracted from the gross PnL to compute the net profit displayed in the Statistics Modal.
 

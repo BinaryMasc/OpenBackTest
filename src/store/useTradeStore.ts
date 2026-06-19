@@ -8,6 +8,7 @@ export interface Trade {
   price: number;
   time: number; // unix timestamp in seconds
   quantity: number;
+  fee: number;
   realizedPnL: number;
   positionSize: number;
   entryPrice: number | null;
@@ -153,6 +154,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             price,
             time: backtestTime || (Date.now() / 1000),
             quantity,
+            fee,
             realizedPnL: 0,
             positionSize: 0,
             entryPrice: null,
@@ -212,6 +214,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           price,
           time: backtestTime || (Date.now() / 1000),
           quantity: activePositionSize,
+          fee: fee * (activePositionSize / quantity),
           realizedPnL: 0,
           positionSize: 0,
           entryPrice: null,
@@ -223,6 +226,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           price,
           time: backtestTime || (Date.now() / 1000),
           quantity: remainder,
+          fee: fee * (remainder / quantity),
           realizedPnL: 0,
           positionSize: 0,
           entryPrice: null,
@@ -289,7 +293,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       price,
       time: backtestTime || (Date.now() / 1000),
       quantity,
-      realizedPnL: 0,
+      fee,
+      realizedPnL: -fee,
       positionSize: activePositionSize,
       entryPrice: entryPrice,
       balance: balance
@@ -358,6 +363,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             price,
             time: backtestTime || (Date.now() / 1000),
             quantity,
+            fee,
             realizedPnL: 0,
             positionSize: 0,
             entryPrice: null,
@@ -417,6 +423,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           price,
           time: backtestTime || (Date.now() / 1000),
           quantity: activePositionSize,
+          fee: fee * (activePositionSize / quantity),
           realizedPnL: 0,
           positionSize: 0,
           entryPrice: null,
@@ -428,6 +435,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           price,
           time: backtestTime || (Date.now() / 1000),
           quantity: remainder,
+          fee: fee * (remainder / quantity),
           realizedPnL: 0,
           positionSize: 0,
           entryPrice: null,
@@ -494,7 +502,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       price,
       time: backtestTime || (Date.now() / 1000),
       quantity,
-      realizedPnL: 0,
+      fee,
+      realizedPnL: -fee,
       positionSize: activePositionSize,
       entryPrice: entryPrice,
       balance: balance
@@ -538,6 +547,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         price,
         time: backtestTime || (Date.now() / 1000),
         quantity: activePositionSize,
+        fee,
         realizedPnL: profit - fee,
         positionSize: 0,
         entryPrice: null,
@@ -581,7 +591,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   },
 
   updateUnrealizedPnL: (currentPrice: number) => {
-    const { position, entryPrice, activePositionSize, takeProfit, stopLoss, flat, contractSize, balance, /*marginBlowoutPercent,*/ isBlown } = get();
+    const { position, entryPrice, activePositionSize, takeProfit, stopLoss, flat, contractSize, balance, feePercent, isBlown } = get();
     if (position === 'flat' || entryPrice === null || isBlown) {
       set({ unrealizedPnL: 0 });
       return;
@@ -614,6 +624,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     } else if (position === 'short') {
       upnl = (entryPrice - currentPrice) * activePositionSize * contractSize;
     }
+
+    const estimatedExitFee = activePositionSize * currentPrice * contractSize * (feePercent / 100);
+    upnl -= estimatedExitFee;
 
     const equity = balance + upnl;
     // const positionValue = activePositionSize * currentPrice * contractSize;
