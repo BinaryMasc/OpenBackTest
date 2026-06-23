@@ -32,7 +32,8 @@ The codebase follows a **Decoupled Bridge Architecture**:
 
 ### `src/components`
 UI components categorized by functional area.
-- **`TradingChart/`**: All components related to the chart interface (overlays, menus, legends).
+- **`ChartGrid.tsx`**: Dynamic, resizable grid layout using `react-resizable-panels` to display up to 3 charts simultaneously.
+- **`TradingChart/`**: All components related to the chart interface (overlays, menus, legends, individual chart containers).
 - **`Controls.tsx`**: Top navigation, data loading controls, and session import/export management.
 - **`PlaybackBar.tsx`**: The bottom timeline and playback controls.
 - **`TradingPanel.tsx`**: The right-side panel for trade execution and account status.
@@ -47,7 +48,7 @@ Custom React hooks encapsulating complex logic.
 
 ### `src/store`
 Zustand stores defining the global state and actions.
-- **`useBacktestStore.ts`**: Controls data playback (Play/Pause/Step), symbol selection, and timeframe management.
+- **`useBacktestStore.ts`**: Controls data playback (Play/Pause/Step), symbol selection, and multi-chart state management (array of `ChartConfig`).
 - **`useTradeStore.ts`**: Core trading engine. Manages positions, orders, PnL calculations, trade history, and session statistics.
 - **`useChartStyleStore.ts`**: Manages styling properties for the chart, such as bullish/bearish candle colors, and persists user settings in localStorage.
 
@@ -67,9 +68,10 @@ Low-level extensions for KlineCharts.
 
 | File | Responsibility |
 | :--- | :--- |
-| `src/App.tsx` | Main application shell and layout. |
-| `src/hooks/useChart.ts` | Initializes chart, handles data updates, and manages responsive resizing. |
-| `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, and `loadData`. |
+| `src/App.tsx` | Main application shell and layout. Hosts the `ChartGrid`. |
+| `src/components/ChartGrid.tsx` | Manages the resizable split-pane layout for multiple charts. |
+| `src/hooks/useChart.ts` | Initializes chart, handles data updates, and manages responsive resizing with isolated container IDs. |
+| `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, `loadData`, and multi-chart configurations. |
 | `src/store/useTradeStore.ts` | Executes trades; tracks account equity, leverage, and aggregates positions for statistics. |
 | `src/store/useChartStyleStore.ts` | Central store managing persistent chart styles and styling properties. |
 | `src/components/TradingChart/CandleStyleEditor.tsx` | Floating overlay editor for bullish/bearish candle, border, and wick colors. |
@@ -117,6 +119,7 @@ graph TD
     subgraph UI ["View Layer (React)"]
         App["App.tsx"]
         Controls["Controls.tsx"]
+        ChartGrid["ChartGrid.tsx"]
         ChartUI["TradingChart/index.tsx"]
         CandleEditor["TradingChart/CandleStyleEditor.tsx"]
         Stats["StatsModal.tsx"]
@@ -140,7 +143,8 @@ graph TD
     end
 
     %% Mapping
-    App --> Controls & ChartUI & Stats
+    App --> Controls & ChartGrid & Stats
+    ChartGrid --> ChartUI
     Controls --> BS & TS
     ChartUI --> UC & UIH & UT & CandleEditor
     CandleEditor --> CSS

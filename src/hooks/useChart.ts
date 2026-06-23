@@ -41,10 +41,24 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
             upWickColor: currentStyle.upWickColor,
             downWickColor: currentStyle.downWickColor,
           },
+          tooltip: {
+            text: { family: '"Fira Sans", sans-serif' }
+          }
+        },
+        xAxis: {
+          tickText: { family: '"Fira Sans", sans-serif' }
+        },
+        yAxis: {
+          tickText: { family: '"Fira Sans", sans-serif' }
+        },
+        crosshair: {
+          horizontal: { text: { family: '"Fira Sans", sans-serif' } },
+          vertical: { text: { family: '"Fira Sans", sans-serif' } }
         },
         indicator: {
           tooltip: {
             showRule: TooltipShowRule.None,
+            text: { family: '"Fira Sans", sans-serif' }
           },
         },
       });
