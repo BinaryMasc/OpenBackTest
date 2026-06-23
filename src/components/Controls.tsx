@@ -137,7 +137,7 @@ export function Controls() {
       backtest: {
         symbol: backtestState.symbol,
         currentIndex: backtestState.currentIndex,
-        timeframe: backtestState.timeframe,
+        charts: backtestState.charts,
         playbackSpeed: backtestState.playbackSpeed,
         mode: backtestState.mode
       },

@@ -1,4 +1,3 @@
-export const CHART_CONTAINER_ID = 'kline-chart-container';
 export const DRAWING_GROUP_ID = 'drawing_group';
 export const CANDLE_PANE_ID = 'candle_pane';
 

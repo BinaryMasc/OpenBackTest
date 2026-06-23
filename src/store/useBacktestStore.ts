@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import type { Candle, Timeframe } from '../types';
+import type { Candle, Timeframe, ChartConfig } from '../types';
 
 
 interface BacktestState {
   rawData: Candle[];
   symbol: string;
   currentIndex: number;
-  timeframe: Timeframe;
+  charts: ChartConfig[];
   isPlaying: boolean;
   playbackSpeed: number; // ms per tick
   isUploading: boolean;
@@ -18,7 +18,9 @@ interface BacktestState {
   setUploadProgress: (progress: number) => void;
   stepForward: () => void;
   stepBackward: () => void;
-  setTimeframe: (tf: Timeframe) => void;
+  addChart: (config: ChartConfig) => void;
+  removeChart: (id: string) => void;
+  setChartTimeframe: (id: string, tf: Timeframe) => void;
   togglePlayback: () => void;
   setPlaybackSpeed: (speed: number) => void;
   setCurrentIndex: (index: number) => void;
@@ -33,7 +35,7 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   rawData: [],
   symbol: '',
   currentIndex: -1,
-  timeframe: '1m',
+  charts: [{ id: 'chart-1', timeframe: '1m' }],
   isPlaying: false,
   playbackSpeed: 500,
   isUploading: false,
@@ -60,7 +62,17 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     currentIndex: Math.max(state.currentIndex - 1, 0)
   })),
 
-  setTimeframe: (tf: Timeframe) => set({ timeframe: tf }),
+  addChart: (config: ChartConfig) => set((state) => ({
+    charts: state.charts.length < 3 ? [...state.charts, config] : state.charts
+  })),
+
+  removeChart: (id: string) => set((state) => ({
+    charts: state.charts.filter(c => c.id !== id)
+  })),
+
+  setChartTimeframe: (id: string, tf: Timeframe) => set((state) => ({
+    charts: state.charts.map(c => c.id === id ? { ...c, timeframe: tf } : c)
+  })),
 
   togglePlayback: () => set((state) => ({ isPlaying: !state.isPlaying })),
 

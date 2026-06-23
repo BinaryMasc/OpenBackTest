@@ -1,4 +1,4 @@
-import { Settings, History, Check, ChevronDown, Play, Pause, ChevronRight, ChevronsRight } from 'lucide-react';
+import { Settings, History, Check, ChevronDown, Play, Pause, ChevronRight, ChevronsRight, LayoutGrid } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useBacktestStore } from '../../store/useBacktestStore';
 import { useTradeStore } from '../../store/useTradeStore';
@@ -7,10 +7,17 @@ import { TIMEFRAMES } from '../../types';
 /**
  * Top-left legend showing the current symbol and a config dropdown.
  */
-export function SymbolLegend() {
+interface SymbolLegendProps {
+  chartId: string;
+}
+
+export function SymbolLegend({ chartId }: SymbolLegendProps) {
   const symbol = useBacktestStore(state => state.symbol) || 'NO SYMBOL';
-  const timeframe = useBacktestStore(state => state.timeframe);
-  const setTimeframe = useBacktestStore(state => state.setTimeframe);
+  const charts = useBacktestStore(state => state.charts);
+  const setChartTimeframe = useBacktestStore(state => state.setChartTimeframe);
+  const addChart = useBacktestStore(state => state.addChart);
+  const removeChart = useBacktestStore(state => state.removeChart);
+  const timeframe = charts.find(c => c.id === chartId)?.timeframe || '1m';
   const isPlaying = useBacktestStore(state => state.isPlaying);
   const togglePlayback = useBacktestStore(state => state.togglePlayback);
   const stepForward = useBacktestStore(state => state.stepForward);
@@ -23,8 +30,24 @@ export function SymbolLegend() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [isTfOpen, setIsTfOpen] = useState(false);
+  const [isLayoutOpen, setIsLayoutOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const tfRef = useRef<HTMLDivElement>(null);
+  const layoutRef = useRef<HTMLDivElement>(null);
+
+  const handleLayoutChange = (num: number) => {
+    const currentLen = charts.length;
+    if (num > currentLen) {
+      for (let i = currentLen; i < num; i++) {
+        addChart({ id: `chart-${Date.now()}-${i}`, timeframe: '1m' });
+      }
+    } else if (num < currentLen) {
+      for (let i = currentLen - 1; i >= num; i--) {
+        removeChart(charts[i].id);
+      }
+    }
+    setIsLayoutOpen(false);
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -33,6 +56,9 @@ export function SymbolLegend() {
       }
       if (tfRef.current && !tfRef.current.contains(event.target as Node)) {
         setIsTfOpen(false);
+      }
+      if (layoutRef.current && !layoutRef.current.contains(event.target as Node)) {
+        setIsLayoutOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -64,7 +90,7 @@ export function SymbolLegend() {
                 <button
                   key={tf}
                   onClick={() => {
-                    setTimeframe(tf);
+                    setChartTimeframe(chartId, tf);
                     setIsTfOpen(false);
                   }}
                   className={`w-full px-3 py-1.5 text-left text-[11px] font-medium transition-colors hover:bg-dark-700 ${timeframe === tf ? 'text-primary-500 bg-primary-500/10' : 'text-slate-400'}`}
@@ -125,7 +151,7 @@ export function SymbolLegend() {
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-56 bg-dark-800 border border-dark-700 rounded-lg shadow-2xl py-1 z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute top-full right-0 mt-2 w-56 bg-dark-800 border border-dark-700 rounded-lg shadow-2xl py-1 z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-dark-700/50 mb-1">
             Chart Configuration
           </div>
@@ -143,10 +169,34 @@ export function SymbolLegend() {
             </div>
             {showTradeHistory && <Check size={14} className="text-primary-500" />}
           </button>
-
-          {/* Add more config options here if needed in future */}
         </div>
       )}
+
+      {/* Layout Menu */}
+      <div className="relative" ref={layoutRef}>
+        <button
+          onClick={() => setIsLayoutOpen(!isLayoutOpen)}
+          className={`flex items-center justify-center p-1.5 rounded-md transition-all gap-1.5 ${isLayoutOpen ? 'text-primary-400 bg-primary-500/10' : 'text-slate-500 hover:text-slate-300 hover:bg-dark-700'}`}
+          title="Chart Layout"
+        >
+          <LayoutGrid size={16} />
+          <ChevronDown size={10} className={`transition-transform duration-200 ${isLayoutOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isLayoutOpen && (
+          <div className="absolute top-full left-0 mt-2 bg-dark-800 border border-dark-700 rounded-lg shadow-2xl py-1 z-[100] min-w-[100px] animate-in fade-in slide-in-from-top-2 duration-150">
+            {[1, 2, 3].map(num => (
+              <button
+                key={num}
+                onClick={() => handleLayoutChange(num)}
+                className={`w-full px-3 py-1.5 text-left text-[11px] font-medium transition-colors hover:bg-dark-700 ${charts.length === num ? 'text-primary-500 bg-primary-500/10' : 'text-slate-400'}`}
+              >
+                {num} Chart{num > 1 ? 's' : ''}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

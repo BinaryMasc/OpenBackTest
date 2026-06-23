@@ -20,12 +20,16 @@ import { useTradeStore } from '../../store/useTradeStore';
 import { useContextMenu } from '../../hooks/useContextMenu';
 import { CandleStyleEditor } from './CandleStyleEditor';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
+import type { Timeframe } from '../../types';
 
+interface TradingChartProps {
+  id: string;
+  timeframe: Timeframe;
+}
 
-export function TradingChart() {
+export function TradingChart({ id, timeframe }: TradingChartProps) {
   const rawData = useBacktestStore(state => state.rawData);
   const currentIndex = useBacktestStore(state => state.currentIndex);
-  const timeframe = useBacktestStore(state => state.timeframe);
 
   const isEditorOpen = useChartStyleStore(state => state.isEditorOpen);
   const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
@@ -37,7 +41,7 @@ export function TradingChart() {
     return aggregateCandles(visibleData, timeframe);
   }, [rawData, currentIndex, timeframe]);
 
-  const { chartRef, containerRef } = useChart({ aggregatedData, timeframe });
+  const { chartRef, containerRef } = useChart({ containerId: id, aggregatedData, timeframe });
 
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
   const [overlayColor, setOverlayColor] = useState('#2196F3');
@@ -149,7 +153,7 @@ export function TradingChart() {
     <div className="w-full h-full flex flex-col bg-dark-900 text-slate-300">
       {/* Top Header Bar */}
       <div className="h-10 border-b border-dark-700 bg-dark-800 flex items-center px-4 shrink-0 overflow-visible z-[60]">
-        <SymbolLegend />
+        <SymbolLegend chartId={id} />
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -168,7 +172,7 @@ export function TradingChart() {
         />
 
         <div className="flex-1 relative w-full h-full" onContextMenu={handleContextMenu}>
-          <ChartContainer containerRef={containerRef} />
+          <ChartContainer id={id} containerRef={containerRef} />
 
           {/* Top-left indicator legend */}
           <IndicatorLegend

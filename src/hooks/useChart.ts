@@ -1,17 +1,17 @@
 import { useRef, useEffect } from 'react';
 import { init, dispose, type Chart, TooltipShowRule } from 'klinecharts';
 import type { Candle, Timeframe } from '../types';
-import { CHART_CONTAINER_ID } from '../lib/chart/constants';
 import { registerCustomOverlays } from '../lib/chart/overlays';
 import { registerCustomIndicators } from '../lib/chart/customIndicators';
 import { useChartStyleStore } from '../store/useChartStyleStore';
 
 interface UseChartOptions {
+  containerId: string;
   aggregatedData: Candle[];
   timeframe: Timeframe;
 }
 
-export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
+export function useChart({ containerId, aggregatedData, timeframe }: UseChartOptions) {
   const chartRef = useRef<Chart | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const prevTimeframeRef = useRef(timeframe);
@@ -23,7 +23,7 @@ export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
     if (!containerRef.current) return;
     registerCustomOverlays();
     registerCustomIndicators();
-    const chart = init(CHART_CONTAINER_ID);
+    const chart = init(containerId);
     let handleDblClick: ((e: MouseEvent) => void) | null = null;
 
     if (chart) {
@@ -85,7 +85,7 @@ export function useChart({ aggregatedData, timeframe }: UseChartOptions) {
       if (handleDblClick && containerRef.current) {
         containerRef.current.removeEventListener('dblclick', handleDblClick);
       }
-      dispose(CHART_CONTAINER_ID);
+      dispose(containerId);
     };
   }, []);
 
