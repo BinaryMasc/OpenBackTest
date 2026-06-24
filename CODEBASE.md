@@ -71,8 +71,9 @@ Low-level extensions for KlineCharts.
 | `src/App.tsx` | Main application shell and layout. Hosts the `ChartGrid`. |
 | `src/components/ChartGrid.tsx` | Manages the resizable split-pane layout for multiple charts. |
 | `src/hooks/useChart.ts` | Initializes chart, handles data updates, and manages responsive resizing with isolated container IDs. |
-| `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, `loadData`, and multi-chart configurations. |
+| `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, `loadData`, `updateLiveCandle`, and multi-chart configurations. |
 | `src/store/useTradeStore.ts` | Executes trades; tracks account equity, leverage, and aggregates positions for statistics. |
+| `src/store/useBinanceStore.ts` | Manages Binance Futures connection state, symbols, and live polling. |
 | `src/store/useChartStyleStore.ts` | Central store managing persistent chart styles and styling properties. |
 | `src/components/TradingChart/CandleStyleEditor.tsx` | Floating overlay editor for bullish/bearish candle, border, and wick colors. |
 | `src/components/StatsModal.tsx` | Calculates and displays Win Rate, Profit Factor, R/R, and Equity Curve; handles CSV exports. |
@@ -81,6 +82,7 @@ Low-level extensions for KlineCharts.
 | `src/components/TradingChart/DrawingToolbar.tsx` | Left-side sidebar for chart annotation tools (Lines, Measures). |
 | `src/hooks/useIndicators.ts` | Bridges the store state to the KlineCharts indicator API. |
 | `src/utils/aggregation.ts` | Logic to convert 1m raw data into higher timeframes (5m, 1h, etc.). |
+| `src/services/binance.ts` | Handles Binance API interactions (fetching symbols, historical klines, live polling). |
 
 ---
 
@@ -129,6 +131,7 @@ graph TD
         BS["useBacktestStore (Playback)"]
         TS["useTradeStore (Execution & Stats)"]
         CSS["useChartStyleStore (Styles)"]
+        BNS["useBinanceStore (Live Data)"]
     end
 
     subgraph Bridge ["Bridge Hooks (Glue)"]
@@ -145,7 +148,8 @@ graph TD
     %% Mapping
     App --> Controls & ChartGrid & Stats
     ChartGrid --> ChartUI
-    Controls --> BS & TS
+    Controls --> BS & TS & BNS
+    BNS --> BS
     ChartUI --> UC & UIH & UT & CandleEditor
     CandleEditor --> CSS
     Stats --> TS
@@ -156,6 +160,12 @@ graph TD
 ```
 
 ## External Data Integration
+
+### Binance Futures Integration
+OpenBackTest supports connecting directly to the Binance Futures API to stream historical and live market data. 
+- **`src/services/binance.ts`**: Handles fetching futures symbols, historical 1m klines, and REST-based live polling (every 1.5s).
+- **`src/store/useBinanceStore.ts`**: Zustand store that manages the Binance connection state (`isBinanceConnected`, `isBinanceLoading`), available symbols, and the current active symbol. When connected, it clears the chart, loads historical data into `useBacktestStore`, and starts the live polling service.
+- **`src/store/useBacktestStore.ts`**: Exposes `updateLiveCandle(kline)` to update the most recent candle or append a new one when the timestamp advances.
 
 ### Importing Third-Party Trade Data
 Import trades from another platform and analyze them using OpenBackTest's Statistics Modal. Construct a JSON file that mimics the internal session state. Load a CSV file into the application before importing the JSON session file.

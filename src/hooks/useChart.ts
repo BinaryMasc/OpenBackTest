@@ -121,7 +121,13 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
   }, [upColor, downColor, upBorderColor, downBorderColor, upWickColor, downWickColor]);
 
   useEffect(() => {
-    if (!chartRef.current || aggregatedData.length === 0) return;
+    if (!chartRef.current) return;
+
+    if (aggregatedData.length === 0) {
+      chartRef.current.applyNewData([]);
+      prevDataLengthRef.current = 0;
+      return;
+    }
 
     const chartData = aggregatedData.map(d => ({
       timestamp: d.time * 1000,

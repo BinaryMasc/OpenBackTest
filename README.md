@@ -12,6 +12,8 @@ Check the [Codebase Guide](CODEBASE.md) for a detailed file-by-file documentatio
 **Trade Panel**
 ![Trade Panel](/public/simulation.png)
 
+**Binance Live Data Feed**
+![Binance Data](/public/binance_data-feed.png)
 
 **Simulation Statistics**
 ![Simulation Statistics](/public/simulation_metrics.png)
@@ -42,5 +44,5 @@ npm run dev
 - [ ] Backtest Data: Show more statistics, calendar view, etc...
 - [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
 - [x] Chart: Ability to change the color of the candles.
-- [ ] Data: Real-time connection to live market (Crypto).
+- [x] Data: Real-time connection to live market (Crypto).
 - [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies.

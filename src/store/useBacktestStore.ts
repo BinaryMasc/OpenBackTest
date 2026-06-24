@@ -29,6 +29,7 @@ interface BacktestState {
   setMode: (mode: 'playback' | 'simulation') => void;
   getCurrentTickTime: () => number | null;
   importState: (state: Partial<BacktestState>) => void;
+  updateLiveCandle: (kline: Candle) => void;
 }
 
 export const useBacktestStore = create<BacktestState>((set, get) => ({
@@ -98,5 +99,24 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     return rawData[currentIndex].time;
   },
 
-  importState: (state: Partial<BacktestState>) => set((prev) => ({ ...prev, ...state }))
+  importState: (state: Partial<BacktestState>) => set((prev) => ({ ...prev, ...state })),
+
+  updateLiveCandle: (kline: Candle) => {
+    set((state) => {
+      const rawData = [...state.rawData];
+      if (rawData.length === 0) return state;
+
+      const lastCandle = rawData[rawData.length - 1];
+      if (kline.time === lastCandle.time) {
+        rawData[rawData.length - 1] = kline;
+      } else if (kline.time > lastCandle.time) {
+        rawData.push(kline);
+      }
+
+      return {
+        rawData,
+        currentIndex: rawData.length - 1
+      };
+    });
+  }
 }));

@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
-import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud } from 'lucide-react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud, Activity, Zap } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
+import { useBinanceStore } from '../store/useBinanceStore';
 import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
 import { TradingPanel } from './TradingPanel';
@@ -20,6 +21,8 @@ export function Controls() {
     rawData, currentIndex, isPlaying, playbackSpeed, isUploading, uploadProgress, mode,
     loadData, setPlaybackSpeed, setUploading, setUploadProgress, setMode
   } = useBacktestStore();
+
+  const { isBinanceConnected, isBinanceLoading, connectBinance, disconnectBinance } = useBinanceStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sessionInputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +44,13 @@ export function Controls() {
 
     return () => clearInterval(interval);
   }, [isPlaying, playbackSpeed]);
+
+  // Auto-collapse preset datasets when Binance connects
+  useEffect(() => {
+    if (isBinanceConnected) {
+      setIsPresetsExpanded(false);
+    }
+  }, [isBinanceConnected]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -195,7 +205,7 @@ export function Controls() {
       } catch (err) {
         alert('Failed to parse session file.');
       }
-      
+
       if (sessionInputRef.current) {
         sessionInputRef.current.value = '';
       }
@@ -275,7 +285,7 @@ export function Controls() {
               className={`transition-transform duration-200 ${isSessionExpanded ? '' : '-rotate-90'}`}
             />
           </button>
-          
+
           {isSessionExpanded && (
             <div className="flex gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
               <button
@@ -324,6 +334,28 @@ export function Controls() {
                 {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
                 {isUploading ? 'Processing...' : 'Load CSV Data'}
               </button>
+
+              <button
+                onClick={isBinanceConnected ? disconnectBinance : connectBinance}
+                disabled={isUploading}
+                className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${isBinanceConnected
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                  : 'bg-dark-700 hover:bg-dark-600 text-white border-slate-600/50'
+                  }`}
+              >
+                {isBinanceConnected ? (
+                  <>
+                    <Activity size={18} className="animate-pulse" />
+                    Disconnect Binance Futures
+                  </>
+                ) : (
+                  <>
+                    <Zap size={18} />
+                    Connect Binance Futures
+                  </>
+                )}
+              </button>
+
               <div className="pt-4">
                 <button
                   onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
@@ -355,16 +387,18 @@ export function Controls() {
                   </div>
                 )}
               </div>
-              {isUploading && (
+              {(isUploading || isBinanceLoading) && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Processing CSV...</span>
-                    <span className="text-primary-400 font-mono">{uploadProgress}%</span>
+                    <span className="text-slate-400">
+                      {isBinanceLoading ? 'Fetching Binance Data...' : 'Processing CSV...'}
+                    </span>
+                    {!isBinanceLoading && <span className="text-primary-400 font-mono">{uploadProgress}%</span>}
                   </div>
                   <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
                     <div
-                      className="h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out"
-                      style={{ width: `${uploadProgress}%` }}
+                      className={`h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out ${isBinanceLoading ? 'w-full animate-pulse' : ''}`}
+                      style={!isBinanceLoading ? { width: `${uploadProgress}%` } : undefined}
                     />
                   </div>
                 </div>
@@ -395,20 +429,22 @@ export function Controls() {
           </div>
         </div> */}
 
-          <div>
-            <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
-            <input
-              type="range"
-              min="10" max="2000" step="10"
-              value={playbackSpeed}
-              onChange={(e) => setPlaybackSpeed(parseInt(e.target.value))}
-              className="w-full accent-primary-500"
-            />
-            <div className="text-right text-xs text-slate-400">{playbackSpeed}ms</div>
-          </div>
+          {!isBinanceConnected && (
+            <div>
+              <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
+              <input
+                type="range"
+                min="10" max="2000" step="10"
+                value={playbackSpeed}
+                onChange={(e) => setPlaybackSpeed(parseInt(e.target.value))}
+                className="w-full accent-primary-500"
+              />
+              <div className="text-right text-xs text-slate-400">{playbackSpeed}ms</div>
+            </div>
+          )}
 
           {/* Playback Bar (Conditional) */}
-          {mode === 'playback' && (
+          {mode === 'playback' && !isBinanceConnected && (
             <div className="pt-4 border-t border-dark-700/50">
               <h4 className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-3">Playback Controls</h4>
               <PlaybackBar />
