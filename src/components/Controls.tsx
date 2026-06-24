@@ -22,7 +22,7 @@ export function Controls() {
     loadData, setPlaybackSpeed, setUploading, setUploadProgress, setMode
   } = useBacktestStore();
 
-  const { isBinanceConnected, isBinanceLoading, connectBinance, disconnectBinance } = useBinanceStore();
+  const { isBinanceConnected, connectBinance, disconnectBinance } = useBinanceStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sessionInputRef = useRef<HTMLInputElement>(null);
@@ -221,7 +221,10 @@ export function Controls() {
   return (
     <div className="flex flex-col h-full bg-dark-800 border-r border-dark-700 w-80 p-6 shadow-xl z-10 text-sm">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-500 to-emerald-400 mb-2">OpenBackTest</h1>
+        <div className="flex items-center gap-3 mb-2">
+          <img src={`${import.meta.env.BASE_URL}icon.png`} alt="OpenBackTest Logo" className="w-12 h-12 object-contain" />
+          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-500 to-emerald-400">OpenBackTest</h1>
+        </div>
         <div className="flex items-center justify-between">
           <p className="text-slate-400 text-xs">Manual Strategy Tester</p>
           <a
@@ -387,18 +390,16 @@ export function Controls() {
                   </div>
                 )}
               </div>
-              {(isUploading || isBinanceLoading) && (
+              {isUploading && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">
-                      {isBinanceLoading ? 'Fetching Binance Data...' : 'Processing CSV...'}
-                    </span>
-                    {!isBinanceLoading && <span className="text-primary-400 font-mono">{uploadProgress}%</span>}
+                    <span className="text-slate-400">Processing CSV...</span>
+                    <span className="text-primary-400 font-mono">{uploadProgress}%</span>
                   </div>
                   <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
                     <div
-                      className={`h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out ${isBinanceLoading ? 'w-full animate-pulse' : ''}`}
-                      style={!isBinanceLoading ? { width: `${uploadProgress}%` } : undefined}
+                      className="h-full bg-gradient-to-r from-primary-500 to-emerald-400 rounded-full transition-all duration-200 ease-out"
+                      style={{ width: `${uploadProgress}%` }}
                     />
                   </div>
                 </div>

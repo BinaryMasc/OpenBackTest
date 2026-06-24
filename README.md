@@ -1,4 +1,4 @@
-# OpenBackTest
+# <img src="./public/icon.png" width="48" align="center" /> OpenBackTest
 
 [Open in browser](https://binarymasc.github.io/OpenBackTest/)
 
