@@ -39,10 +39,19 @@ npm run build
 npm run dev
 ```
 
+### Testing
+The project uses `vitest` and `@testing-library/react` for unit testing. All tests are located in the `tests/` directory.
+
+```sh
+npm run test       # Run test suite
+npm run coverage   # Run tests with coverage report
+```
+
 ### To-Do
 - [x] Session: Import/export current session and trades to continue later.
 - [ ] Backtest Data: Show more statistics, calendar view, etc...
 - [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
 - [x] Chart: Ability to change the color of the candles.
 - [x] Data: Real-time connection to live market (Crypto).
+- [x] Testing: Establish unit testing foundation for stores, hooks, and components.
 - [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies.

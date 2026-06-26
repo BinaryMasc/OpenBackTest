@@ -106,6 +106,13 @@ Low-level extensions for KlineCharts.
 - `useBacktestStore`: For playback control.
 - `StatsModal`: For performance metrics and reporting.
 
+### Rules for AI Agents Contributing to this Project
+When working on features, bug fixes, or enhancements, you MUST adhere to the following rules:
+1. **Test Directory Structure**: All unit and integration tests MUST be placed in the root `tests/` directory (e.g., `tests/store`, `tests/components`, `tests/hooks`). **Do not** place `__tests__` folders or `.test.ts` files alongside the source code in the `src/` directory.
+2. **Testing Stack**: The project uses `vitest`, `jsdom`, and `@testing-library/react`. 
+3. **Mocking**: When writing tests for complex React hooks and Zustand stores (especially those interacting with the canvas or browser APIs), actively use `@testing-library/react`'s `renderHook` and `vitest`'s `vi.mock()`/`vi.spyOn()`.
+4. **Coverage**: When adding new UI components or data stores, ensure that you provide corresponding test coverage. Run `npm run coverage` to verify your changes.
+
 ### State Flow
 1. **Data Source**: CSV/JSON loaded into `useBacktestStore`.
 2. **Aggregation**: `useBacktestStore` uses `aggregation.ts` to prepare data for the current timeframe.

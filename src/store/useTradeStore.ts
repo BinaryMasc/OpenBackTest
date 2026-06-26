@@ -49,7 +49,7 @@ interface TradeState {
   hasTraded: boolean;
   tradeHistory: Trade[];
   showTradeHistory: boolean;
-  
+
   isFinished: boolean;
   showStatsModal: boolean;
   finishedPositions: Position[];
@@ -91,13 +91,13 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   initialBalance: 10000,
   marginBlowoutPercent: 5,
   contractSize: 1,
-  feePercent: 0,
+  feePercent: 0.02,
 
   isBlown: false,
   hasTraded: false,
   tradeHistory: [],
   showTradeHistory: false,
-  
+
   isFinished: false,
   showStatsModal: false,
   finishedPositions: [],
@@ -205,7 +205,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         // Flip position
         const profit = (entryPrice - price) * activePositionSize * contractSize;
         const remainder = quantity - activePositionSize;
-        
+
         // Record finished short position
         const backtestTime = useBacktestStore.getState().getCurrentTickTime();
         const closeTrade: Trade = {
@@ -236,7 +236,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         set((state) => {
           const finalCloseTrade: Trade = { ...closeTrade, realizedPnL: profit - (fee * (activePositionSize / quantity)), positionSize: 0, entryPrice: null, balance: state.balance + profit - (fee * (activePositionSize / quantity)) };
           const finalOpenTrade: Trade = { ...openTrade, realizedPnL: -(fee * (remainder / quantity)), positionSize: remainder, entryPrice: price, balance: state.balance + profit - fee };
-          
+
           const newTradesForShort = [...state.currentPositionTrades, finalCloseTrade];
           const totalEntryQty = newTradesForShort.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.quantity, 0);
           const avgEntryPrice = newTradesForShort.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalEntryQty;
@@ -309,7 +309,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         entryPrice: get().entryPrice,
         balance: get().balance
       };
-      return { 
+      return {
         tradeHistory: [...state.tradeHistory, currentTrade],
         currentPositionTrades: newCurrentPositionTrades
       };
@@ -517,7 +517,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         entryPrice: get().entryPrice,
         balance: get().balance
       };
-      return { 
+      return {
         tradeHistory: [...state.tradeHistory, currentTrade],
         currentPositionTrades: [...state.currentPositionTrades, trade]
       };
@@ -555,7 +555,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       };
 
       const newTrades = [...state.currentPositionTrades, finalTrade];
-      
+
       // Calculate finished position
       const totalEntryQty = newTrades.filter(t => t.type === (posType === 'long' ? 'buy' : 'sell')).reduce((acc, t) => acc + t.quantity, 0);
       const avgEntryPrice = newTrades.filter(t => t.type === (posType === 'long' ? 'buy' : 'sell')).reduce((acc, t) => acc + t.price * t.quantity, 0) / totalEntryQty;
