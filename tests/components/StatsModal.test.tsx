@@ -65,6 +65,19 @@ describe('StatsModal', () => {
     // Profit Factor = 50 / 20 = 2.50, RR = 50 / 20 = 2.50
     const twoFifties = screen.getAllByText(/2\.50/i);
     expect(twoFifties.length).toBe(2);
+
+    // Time Metrics
+    const timeElements = screen.getAllByText(/16m 40s/i);
+    expect(timeElements.length).toBeGreaterThanOrEqual(1);
+
+    // Trade Distribution PnL
+    expect(screen.getByText(/\+\$50/i)).toBeInTheDocument(); // Long profit
+    expect(screen.getAllByText(/-\$0/i).length).toBeGreaterThanOrEqual(1); // Long loss (or short profit with -)
+    expect(screen.getAllByText(/\+\$0/i).length).toBeGreaterThanOrEqual(1); // Short profit
+    expect(screen.getAllByText(/-\$20/i).length).toBeGreaterThanOrEqual(1); // Short loss and Avg loss
+
+    // Percent Profitable Days
+    expect(screen.getByText(/100\.0%/i)).toBeInTheDocument();
   });
 
   it('handles empty states without crashing', () => {
@@ -87,8 +100,13 @@ describe('StatsModal', () => {
     useTradeStore.setState({ showStatsModal: true });
     const spy = vi.spyOn(useTradeStore.getState(), 'setShowStatsModal');
 
-    render(<StatsModal />);
-    fireEvent.click(screen.getByText('Close Results'));
+    const { container } = render(<StatsModal />);
+    // Find the X button by its specific class
+    const closeButton = container.querySelector('.rounded-full');
+    
+    if (closeButton) {
+      fireEvent.click(closeButton);
+    }
 
     expect(spy).toHaveBeenCalledWith(false);
   });
