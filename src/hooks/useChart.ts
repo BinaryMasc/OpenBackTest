@@ -156,6 +156,10 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
         }, 50);
       }
     } else {
+      if (chartData.length >= 2) {
+        // Update the second-to-last candle as well to ensure its final closed state is rendered
+        chartRef.current.updateData(chartData[chartData.length - 2]);
+      }
       chartRef.current.updateData(chartData[chartData.length - 1]);
     }
 

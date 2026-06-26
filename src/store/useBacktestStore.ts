@@ -111,6 +111,8 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
         rawData[rawData.length - 1] = kline;
       } else if (kline.time > lastCandle.time) {
         rawData.push(kline);
+      } else if (rawData.length >= 2 && kline.time === rawData[rawData.length - 2].time) {
+        rawData[rawData.length - 2] = kline;
       }
 
       return {

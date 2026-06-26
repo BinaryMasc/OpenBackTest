@@ -8,7 +8,7 @@ export const BinanceService = {
     const response = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo');
     const data = await response.json();
     return data.symbols
-      .filter((s: any) => s.contractType === 'PERPETUAL' && s.status === 'TRADING')
+      .filter((s: any) => (s.contractType === 'PERPETUAL' || s.contractType === 'TRADIFI_PERPETUAL') && s.status === 'TRADING')
       .map((s: any) => s.symbol);
   },
 
@@ -55,9 +55,9 @@ export const BinanceService = {
   startLiveCandlePolling(symbol: string, interval: string = '1m', onCandle: (candle: Candle) => void): { close: () => void } {
     const pollInterval = setInterval(async () => {
       try {
-        const candles = await this.fetchHistoricalKlines(symbol, interval, 1);
+        const candles = await this.fetchHistoricalKlines(symbol, interval, 2);
         if (candles && candles.length > 0) {
-          onCandle(candles[0]);
+          candles.forEach(candle => onCandle(candle));
         }
       } catch (err) {
         console.error('Failed to poll live candle', err);
