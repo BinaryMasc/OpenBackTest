@@ -32,6 +32,7 @@ interface TradeState {
   realizedPnL: number;
   unrealizedPnL: number;
   position: PositionType;
+  positionSymbol: string | null;
   entryPrice: number | null;
   activePositionSize: number;
   orderSize: number;
@@ -81,6 +82,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   realizedPnL: 0,
   unrealizedPnL: 0,
   position: 'flat',
+  positionSymbol: null,
   entryPrice: null,
   activePositionSize: 0,
   orderSize: 1,
@@ -108,8 +110,11 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   clearTradeHistory: () => set({ tradeHistory: [] }),
 
   buy: (price: number) => {
-    const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent } = get();
+    const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent, positionSymbol } = get();
     if (isBlown) return;
+
+    const currentSymbol = useBacktestStore.getState().symbol;
+    if (position !== 'flat' && positionSymbol !== null && positionSymbol !== currentSymbol) return;
 
     const quantity = orderSize;
     const equity = balance + unrealizedPnL;
@@ -189,6 +194,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             balance: state.balance + profit - fee,
             realizedPnL: state.realizedPnL + profit - fee,
             position: 'flat',
+            positionSymbol: null,
             activePositionSize: 0,
             entryPrice: null,
             unrealizedPnL: 0,
@@ -259,6 +265,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             balance: state.balance + profit - fee,
             realizedPnL: state.realizedPnL + profit - fee,
             position: 'long',
+            positionSymbol: currentSymbol,
             activePositionSize: remainder,
             entryPrice: price,
             unrealizedPnL: 0,
@@ -276,6 +283,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // Open new Long
       set((state) => ({
         position: 'long',
+        positionSymbol: currentSymbol,
         entryPrice: price,
         activePositionSize: quantity,
         unrealizedPnL: 0,
@@ -317,8 +325,11 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   },
 
   sell: (price: number) => {
-    const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent } = get();
+    const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent, positionSymbol } = get();
     if (isBlown) return;
+
+    const currentSymbol = useBacktestStore.getState().symbol;
+    if (position !== 'flat' && positionSymbol !== null && positionSymbol !== currentSymbol) return;
 
     const quantity = orderSize;
     const equity = balance + unrealizedPnL;
@@ -398,6 +409,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             balance: state.balance + profit - fee,
             realizedPnL: state.realizedPnL + profit - fee,
             position: 'flat',
+            positionSymbol: null,
             activePositionSize: 0,
             entryPrice: null,
             unrealizedPnL: 0,
@@ -468,6 +480,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
             balance: state.balance + profit - fee,
             realizedPnL: state.realizedPnL + profit - fee,
             position: 'short',
+            positionSymbol: currentSymbol,
             activePositionSize: remainder,
             entryPrice: price,
             unrealizedPnL: 0,
@@ -485,6 +498,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // Open new Short
       set((state) => ({
         position: 'short',
+        positionSymbol: currentSymbol,
         entryPrice: price,
         activePositionSize: quantity,
         unrealizedPnL: 0,
@@ -525,8 +539,12 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   },
 
   flat: (price: number) => {
-    const { position, activePositionSize, entryPrice, contractSize, feePercent } = get();
-    if (position === 'flat' || entryPrice === null) return;
+    const { position, activePositionSize, entryPrice, contractSize, feePercent, positionSymbol } = get();
+    if (position === 'flat') return;
+
+    const currentSymbol = useBacktestStore.getState().symbol;
+    if (positionSymbol !== null && positionSymbol !== currentSymbol) return;
+    if (entryPrice === null) return;
 
     let profit = 0;
     if (position === 'long') {
@@ -578,6 +596,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         balance: state.balance + profit - fee,
         realizedPnL: state.realizedPnL + profit - fee,
         position: 'flat',
+        positionSymbol: null,
         entryPrice: null,
         activePositionSize: 0,
         unrealizedPnL: 0,
@@ -591,9 +610,14 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   },
 
   updateUnrealizedPnL: (currentPrice: number) => {
-    const { position, entryPrice, activePositionSize, takeProfit, stopLoss, flat, contractSize, balance, feePercent, isBlown } = get();
+    const { position, entryPrice, activePositionSize, takeProfit, stopLoss, flat, contractSize, balance, feePercent, isBlown, positionSymbol } = get();
     if (position === 'flat' || entryPrice === null || isBlown) {
       set({ unrealizedPnL: 0 });
+      return;
+    }
+
+    const currentSymbol = useBacktestStore.getState().symbol;
+    if (positionSymbol !== null && positionSymbol !== currentSymbol) {
       return;
     }
 
@@ -657,6 +681,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     realizedPnL: 0,
     unrealizedPnL: 0,
     position: 'flat',
+    positionSymbol: null,
     entryPrice: null,
     activePositionSize: 0,
     orderSize: 1,

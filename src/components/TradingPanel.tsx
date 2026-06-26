@@ -5,7 +5,7 @@ import { CircleOff, Wallet, BarChart3, Activity, ChevronDown } from 'lucide-reac
 
 export function TradingPanel() {
   const {
-    balance, realizedPnL, unrealizedPnL, position, entryPrice, activePositionSize, orderSize,
+    balance, realizedPnL, unrealizedPnL, position, positionSymbol, entryPrice, activePositionSize, orderSize,
     takeProfit, stopLoss,
     leverage, initialBalance, /*marginBlowoutPercent, */ contractSize, feePercent, isBlown, hasTraded,
     buy, sell, flat, updateUnrealizedPnL, setOrderSize, setTakeProfit, setStopLoss,
@@ -13,7 +13,7 @@ export function TradingPanel() {
     reset, finishSimulation, isFinished, setShowStatsModal
   } = useTradeStore();
 
-  const { rawData, currentIndex } = useBacktestStore();
+  const { rawData, currentIndex, symbol } = useBacktestStore();
   const currentCandle = rawData[currentIndex];
   const currentPrice = currentCandle?.close || 0;
 
@@ -22,6 +22,7 @@ export function TradingPanel() {
 
   const equity = balance + unrealizedPnL;
   const positionValue = activePositionSize * currentPrice * contractSize;
+  const isWrongSymbol = position !== 'flat' && positionSymbol !== null && positionSymbol !== symbol;
 
   // TODO: marginBlowoutPercent is unused for now
   // const marginRequired = positionValue * (marginBlowoutPercent / 100);
@@ -42,6 +43,7 @@ export function TradingPanel() {
   };
 
   const pnlColor = position === 'flat' ? 'text-slate-500' : (unrealizedPnL >= 0 ? 'text-emerald-400' : 'text-red-400');
+  const displayPosition = isWrongSymbol ? `${position} (${positionSymbol})` : position;
   const realizedColor = realizedPnL >= 0 ? 'text-emerald-400' : 'text-red-400';
 
   return (
@@ -205,21 +207,21 @@ export function TradingPanel() {
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => buy(currentPrice)}
-          disabled={!currentPrice || isBlown}
+          disabled={!currentPrice || isBlown || isWrongSymbol}
           className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20 active:scale-95 disabled:opacity-50"
         >
           Buy (Long)
         </button>
         <button
           onClick={() => sell(currentPrice)}
-          disabled={!currentPrice || isBlown}
+          disabled={!currentPrice || isBlown || isWrongSymbol}
           className="flex items-center justify-center gap-2 bg-[#ef5350] hover:bg-[#d32f2f] text-white py-3 rounded-lg font-bold transition-all shadow-lg shadow-red-900/10 active:scale-95 disabled:opacity-50"
         >
           Sell (Short)
         </button>
         <button
           onClick={() => flat(currentPrice)}
-          disabled={position === 'flat' || !currentPrice || isBlown}
+          disabled={position === 'flat' || !currentPrice || isBlown || isWrongSymbol}
           className="col-span-2 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg font-bold transition-all active:scale-95 disabled:opacity-50"
         >
           <CircleOff size={16} />
@@ -235,7 +237,7 @@ export function TradingPanel() {
             const diff = currentPrice * 0.005;
             setTakeProfit(position === 'long' ? currentPrice + diff : currentPrice - diff);
           }}
-          disabled={position === 'flat' || !currentPrice}
+          disabled={position === 'flat' || !currentPrice || isWrongSymbol}
           className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-emerald-400 border border-emerald-900/50 py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
         >
           TP
@@ -246,7 +248,7 @@ export function TradingPanel() {
             const diff = currentPrice * 0.005;
             setStopLoss(position === 'long' ? currentPrice - diff : currentPrice + diff);
           }}
-          disabled={position === 'flat' || !currentPrice}
+          disabled={position === 'flat' || !currentPrice || isWrongSymbol}
           className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-red-400 border border-red-900/50 py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
         >
           SL
@@ -258,7 +260,7 @@ export function TradingPanel() {
         <div className="flex justify-between items-center text-[10px] uppercase font-bold">
           <span className="text-slate-500">Current Position</span>
           <span className={position === 'flat' ? 'text-slate-400' : (position === 'long' ? 'text-emerald-500' : 'text-red-500')}>
-            {position}
+            {displayPosition}
           </span>
         </div>
         <div className="flex justify-between items-center text-[10px] uppercase font-bold">
