@@ -53,5 +53,8 @@ npm run coverage   # Run tests with coverage report
 - [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
 - [x] Chart: Ability to change the color of the candles.
 - [x] Data: Real-time connection to live market (Crypto).
+- [x] Data: Provider-neutral market-data connection abstraction.
 - [x] Testing: Establish unit testing foundation for stores, hooks, and components.
 - [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies.
+- [ ] Data: Rithmic market-data adapter (requires Rithmic API access/dev kit).
+- [ ] Trading: Broker execution adapters and live order routing.

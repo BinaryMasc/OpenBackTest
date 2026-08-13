@@ -1,7 +1,7 @@
 import { Settings, History, Check, ChevronDown, Play, Pause, ChevronRight, ChevronsRight, LayoutGrid } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useBacktestStore } from '../../store/useBacktestStore';
-import { useBinanceStore } from '../../store/useBinanceStore';
+import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useTradeStore } from '../../store/useTradeStore';
 import { TIMEFRAMES } from '../../types';
 
@@ -26,9 +26,10 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
   const rawData = useBacktestStore(state => state.rawData);
   //const mode = useBacktestStore(state => state.mode);
 
-  const isBinanceConnected = useBinanceStore(state => state.isBinanceConnected);
-  const binanceSymbols = useBinanceStore(state => state.binanceSymbols);
-  const setSymbol = useBinanceStore(state => state.setSymbol);
+  const isConnected = useMarketDataStore(state => state.isConnected);
+  const sourceName = useMarketDataStore(state => state.sourceName);
+  const symbols = useMarketDataStore(state => state.symbols);
+  const setSymbol = useMarketDataStore(state => state.setSymbol);
 
   const showTradeHistory = useTradeStore(state => state.showTradeHistory);
   const setShowTradeHistory = useTradeStore(state => state.setShowTradeHistory);
@@ -80,7 +81,7 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
   return (
     <div className="flex items-center gap-2 pointer-events-auto relative" ref={dropdownRef}>
       <div className="flex items-center gap-2 px-2 py-1">
-        {isBinanceConnected ? (
+        {isConnected ? (
           <div className="relative" ref={symbolDropdownRef}>
             <div className="flex items-center gap-2">
               <button
@@ -91,7 +92,7 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
                 <ChevronDown size={12} className={`transition-transform duration-200 ${isSymbolDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
-                Binance Live
+                {sourceName || 'Market'} Live
               </span>
             </div>
 
@@ -108,22 +109,22 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
                   />
                 </div>
                 <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                  {binanceSymbols
-                    .filter(s => s.toLowerCase().includes(symbolSearch.toLowerCase()))
-                    .map(s => (
+                  {symbols
+                    .filter(item => item.symbol.toLowerCase().includes(symbolSearch.toLowerCase()))
+                    .map(item => (
                       <button
-                        key={s}
+                        key={item.symbol}
                         onClick={() => {
-                          setSymbol(s);
+                          setSymbol(item.symbol);
                           setIsSymbolDropdownOpen(false);
                           setSymbolSearch('');
                         }}
-                        className={`w-full px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-dark-700 ${symbol === s ? 'text-emerald-500 bg-emerald-500/10' : 'text-slate-300'}`}
+                        className={`w-full px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-dark-700 ${symbol === item.symbol ? 'text-emerald-500 bg-emerald-500/10' : 'text-slate-300'}`}
                       >
-                        {s}
+                        {item.symbol}
                       </button>
                     ))}
-                  {binanceSymbols.filter(s => s.toLowerCase().includes(symbolSearch.toLowerCase())).length === 0 && (
+                  {symbols.filter(item => item.symbol.toLowerCase().includes(symbolSearch.toLowerCase())).length === 0 && (
                     <div className="px-3 py-2 text-xs text-slate-500 text-center">No symbols found</div>
                   )}
                 </div>
@@ -175,7 +176,7 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
 
         <div className="w-px h-3 bg-dark-700/50 mx-1" />
 
-        {!isBinanceConnected && (
+        {!isConnected && (
           <>
             <div className="flex items-center gap-1">
               <button

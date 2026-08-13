@@ -26,6 +26,7 @@ The codebase follows a **Decoupled Bridge Architecture**:
 2.  **View (Declarative)**: React components manage layout and user input.
 3.  **Hooks (The Bridge)**: These "watch" the State and imperatively update the Chart Engine (`chart.applyNewData()`, `chart.createOverlay()`).
 4.  **Engine (Imperative)**: KlineCharts handles high-performance Canvas rendering via extensions in `lib/chart/`.
+5.  **Data Connections (Provider-neutral)**: Market-data providers implement a shared connection contract and feed normalized candles into the backtest store.
 ---
 
 ## Directory Structure
@@ -50,6 +51,8 @@ Custom React hooks encapsulating complex logic.
 Zustand stores defining the global state and actions.
 - **`useBacktestStore.ts`**: Controls data playback (Play/Pause/Step), symbol selection, and multi-chart state management (array of `ChartConfig`).
 - **`useTradeStore.ts`**: Core trading engine. Manages positions, orders, PnL calculations, trade history, and session statistics.
+- **`useMarketDataStore.ts`**: Manages provider-neutral connection state, normalized symbols, historical data, and live candle subscriptions.
+- **`useBinanceStore.ts`**: Deprecated compatibility alias for `useMarketDataStore`.
 - **`useChartStyleStore.ts`**: Manages styling properties for the chart, such as bullish/bearish candle colors, and persists user settings in localStorage.
 
 ### `src/lib/chart`
@@ -73,7 +76,8 @@ Low-level extensions for KlineCharts.
 | `src/hooks/useChart.ts` | Initializes chart, handles data updates, and manages responsive resizing with isolated container IDs. |
 | `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, `loadData`, `updateLiveCandle`, and multi-chart configurations. |
 | `src/store/useTradeStore.ts` | Executes trades; tracks account equity, leverage, and aggregates positions for statistics. |
-| `src/store/useBinanceStore.ts` | Manages Binance Futures connection state, symbols, and live polling. |
+| `src/store/useMarketDataStore.ts` | Owns the active market-data connection and maps provider events into normalized candles. |
+| `src/store/useBinanceStore.ts` | Compatibility alias for the provider-neutral market-data store. |
 | `src/store/useChartStyleStore.ts` | Central store managing persistent chart styles and styling properties. |
 | `src/components/TradingChart/CandleStyleEditor.tsx` | Floating overlay editor for bullish/bearish candle, border, and wick colors. |
 | `src/components/StatsModal.tsx` | Calculates and displays Win Rate, Profit Factor, R/R, and Equity Curve; handles CSV exports. |
@@ -83,6 +87,9 @@ Low-level extensions for KlineCharts.
 | `src/hooks/useIndicators.ts` | Bridges the store state to the KlineCharts indicator API. |
 | `src/utils/aggregation.ts` | Logic to convert 1m raw data into higher timeframes (5m, 1h, etc.). |
 | `src/services/binance.ts` | Handles Binance API interactions (fetching symbols, historical klines, live polling). |
+| `src/services/marketData.ts` | Shared `MarketDataSource`, `MarketDataConnection`, and subscription interfaces for provider adapters. |
+| `src/services/marketDataRegistry.ts` | Registry used to select an available market-data provider. |
+| `src/services/execution.ts` | Future order/execution contracts; no live order routing is wired yet. |
 
 ---
 
@@ -138,7 +145,7 @@ graph TD
         BS["useBacktestStore (Playback)"]
         TS["useTradeStore (Execution & Stats)"]
         CSS["useChartStyleStore (Styles)"]
-        BNS["useBinanceStore (Live Data)"]
+        BNS["useMarketDataStore (Live Data)"]
     end
 
     subgraph Bridge ["Bridge Hooks (Glue)"]
@@ -168,11 +175,19 @@ graph TD
 
 ## External Data Integration
 
-### Binance Futures Integration
-OpenBackTest supports connecting directly to the Binance Futures API to stream historical and live market data. 
-- **`src/services/binance.ts`**: Handles fetching futures symbols, historical 1m klines, and REST-based live polling (every 1.5s).
-- **`src/store/useBinanceStore.ts`**: Zustand store that manages the Binance connection state (`isBinanceConnected`, `isBinanceLoading`), available symbols, and the current active symbol. When connected, it clears the chart, loads historical data into `useBacktestStore`, and starts the live polling service.
-- **`src/store/useBacktestStore.ts`**: Exposes `updateLiveCandle(kline)` to update the most recent candle or append a new one when the timestamp advances.
+### Market Data Connections
+OpenBackTest consumes live data through a provider-neutral connection contract.
+
+- **`src/services/marketData.ts`** defines `MarketDataSource`, `MarketDataConnection`, and `MarketDataSubscription`.
+- **`src/services/marketDataRegistry.ts`** registers available providers.
+- **`src/services/binance.ts`** implements the current Binance Futures adapter: futures symbols, historical 1m klines, and REST-based live polling.
+- **`src/store/useMarketDataStore.ts`** owns the active connection, loads historical data, starts/stops subscriptions, and maps provider symbols to normalized `MarketSymbol` values.
+- **`src/store/useBinanceStore.ts`** remains as a compatibility alias while consumers migrate to `useMarketDataStore`.
+- **`src/store/useBacktestStore.ts`** remains provider-agnostic and only receives normalized candles through `updateLiveCandle(kline)`.
+
+Rithmic is intentionally not connected yet. Its adapter can implement the same contract once the R|Protocol/API dev kit, credentials, and deployment gateway are available. Order routing is not part of the current market-data abstraction; it should be added as a separate execution interface after paper-trading connectivity is validated.
+
+The future execution boundary is defined in **`src/services/execution.ts`**. It models orders, order updates, fills, and broker positions without changing the current local simulation behavior.
 
 ### Importing Third-Party Trade Data
 Import trades from another platform and analyze them using OpenBackTest's Statistics Modal. Construct a JSON file that mimics the internal session state. Load a CSV file into the application before importing the JSON session file.
@@ -235,4 +250,3 @@ JSON structure required to populate the statistics:
 *   **`isFinished` & `showStatsModal`**: Set to `true` to immediately open the dashboard.
 *   **`finishedPositions`**: Powers core stats (Win Rate, PnL, Drawdown, Profit Factor). The `pnl` field should be the **gross** profit/loss (before fees). The `trades` array should be left empty (`[]`) for imported data.
 *   **`tradeHistory`**: Powers the "Trade Log" export, "Backtest from/to" dates, and fee calculations. Fees in `tradeHistory` entries are automatically subtracted from the gross PnL to compute the net profit displayed in the Statistics Modal.
-

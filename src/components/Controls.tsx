@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud, Activity, Zap } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
-import { useBinanceStore } from '../store/useBinanceStore';
+import { useMarketDataStore } from '../store/useMarketDataStore';
 import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
 import { TradingPanel } from './TradingPanel';
@@ -22,7 +22,7 @@ export function Controls() {
     loadData, setPlaybackSpeed, setUploading, setUploadProgress, setMode
   } = useBacktestStore();
 
-  const { isBinanceConnected, connectBinance, disconnectBinance } = useBinanceStore();
+  const { isConnected, sourceName, error: marketDataError, connectDefaultSource, disconnectSource } = useMarketDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sessionInputRef = useRef<HTMLInputElement>(null);
@@ -45,12 +45,12 @@ export function Controls() {
     return () => clearInterval(interval);
   }, [isPlaying, playbackSpeed]);
 
-  // Auto-collapse preset datasets when Binance connects
+  // Auto-collapse preset datasets when a live source connects
   useEffect(() => {
-    if (isBinanceConnected) {
+    if (isConnected) {
       setIsPresetsExpanded(false);
     }
-  }, [isBinanceConnected]);
+  }, [isConnected]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -339,22 +339,22 @@ export function Controls() {
               </button>
 
               <button
-                onClick={isBinanceConnected ? disconnectBinance : connectBinance}
+                onClick={isConnected ? disconnectSource : connectDefaultSource}
                 disabled={isUploading}
-                className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${isBinanceConnected
+                className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
                   : 'bg-dark-700 hover:bg-dark-600 text-white border-slate-600/50'
                   }`}
               >
-                {isBinanceConnected ? (
+                {isConnected ? (
                   <>
                     <Activity size={18} className="animate-pulse" />
-                    Disconnect Binance Futures
+                    Disconnect {sourceName || 'Market Data'}
                   </>
                 ) : (
                   <>
                     <Zap size={18} />
-                    Connect Binance Futures
+                    Connect Live Market Data
                   </>
                 )}
               </button>
@@ -407,6 +407,11 @@ export function Controls() {
               <div className="text-xs text-slate-500 mt-2">
                 {!isUploading && (rawData.length > 0 ? `${rawData.length} candles loaded` : 'No data loaded')}
               </div>
+              {marketDataError && (
+                <div className="text-xs text-red-400 mt-2" role="alert">
+                  {marketDataError}
+                </div>
+              )}
             </div>
           )
         }
@@ -430,7 +435,7 @@ export function Controls() {
           </div>
         </div> */}
 
-          {!isBinanceConnected && (
+          {!isConnected && (
             <div>
               <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
               <input
@@ -445,7 +450,7 @@ export function Controls() {
           )}
 
           {/* Playback Bar (Conditional) */}
-          {mode === 'playback' && !isBinanceConnected && (
+          {mode === 'playback' && !isConnected && (
             <div className="pt-4 border-t border-dark-700/50">
               <h4 className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-3">Playback Controls</h4>
               <PlaybackBar />
