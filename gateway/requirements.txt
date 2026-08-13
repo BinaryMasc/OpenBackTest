@@ -1,0 +1,5 @@
+# Rithmic's R|Protocol uses WebSockets and Protocol Buffers.
+websockets>=12,<16
+protobuf==3.20.3
+pytz>=2024.1
+pyrithmic @ git+https://github.com/jacksonwoody/pyrithmic.git@36c0cd8ff6edb795c539b0fda1524ef0791590bd

@@ -39,6 +39,19 @@ npm run build
 npm run dev
 ```
 
+### Rithmic live data
+
+Rithmic is available through the local credential gateway. Install and run it separately before connecting from the app:
+
+```sh
+python3 -m venv .venv-rithmic
+source .venv-rithmic/bin/activate
+python -m pip install -r gateway/requirements.txt
+python gateway/rithmic_gateway.py
+```
+
+The app prompts only for the user's Phidias Rithmic username and password. It supplies the Paper Trading/Chicago profile and resolves the current ES contract automatically. See [gateway/README.md](gateway/README.md). This integration is market-data only; live order routing is not implemented.
+
 ### Testing
 The project uses `vitest` and `@testing-library/react` for unit testing. All tests are located in the `tests/` directory.
 
@@ -54,7 +67,7 @@ npm run coverage   # Run tests with coverage report
 - [x] Chart: Ability to change the color of the candles.
 - [x] Data: Real-time connection to live market (Crypto).
 - [x] Data: Provider-neutral market-data connection abstraction.
+- [x] Data: Rithmic credential login gateway and live market-data adapter.
 - [x] Testing: Establish unit testing foundation for stores, hooks, and components.
 - [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies.
-- [ ] Data: Rithmic market-data adapter (requires Rithmic API access/dev kit).
 - [ ] Trading: Broker execution adapters and live order routing.

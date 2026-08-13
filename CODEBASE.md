@@ -36,6 +36,7 @@ UI components categorized by functional area.
 - **`ChartGrid.tsx`**: Dynamic, resizable grid layout using `react-resizable-panels` to display up to 3 charts simultaneously.
 - **`TradingChart/`**: All components related to the chart interface (overlays, menus, legends, individual chart containers).
 - **`Controls.tsx`**: Top navigation, data loading controls, and session import/export management.
+- **`RithmicConnectionDialog.tsx`**: Credential form for the local Rithmic gateway.
 - **`PlaybackBar.tsx`**: The bottom timeline and playback controls.
 - **`TradingPanel.tsx`**: The right-side panel for trade execution and account status.
 - **`StatsModal.tsx`**: Performance analysis dashboard with equity curve and export features.
@@ -87,9 +88,11 @@ Low-level extensions for KlineCharts.
 | `src/hooks/useIndicators.ts` | Bridges the store state to the KlineCharts indicator API. |
 | `src/utils/aggregation.ts` | Logic to convert 1m raw data into higher timeframes (5m, 1h, etc.). |
 | `src/services/binance.ts` | Handles Binance API interactions (fetching symbols, historical klines, live polling). |
+| `src/services/rithmic.ts` | Browser-side Rithmic gateway connection and normalized candle subscription. |
 | `src/services/marketData.ts` | Shared `MarketDataSource`, `MarketDataConnection`, and subscription interfaces for provider adapters. |
 | `src/services/marketDataRegistry.ts` | Registry used to select an available market-data provider. |
 | `src/services/execution.ts` | Future order/execution contracts; no live order routing is wired yet. |
+| `gateway/rithmic_gateway.py` | Local R|Protocol Ticker Plant login, last-trade subscription, and one-minute candle bridge. |
 
 ---
 
@@ -180,12 +183,15 @@ OpenBackTest consumes live data through a provider-neutral connection contract.
 
 - **`src/services/marketData.ts`** defines `MarketDataSource`, `MarketDataConnection`, and `MarketDataSubscription`.
 - **`src/services/marketDataRegistry.ts`** registers available providers.
-- **`src/services/binance.ts`** implements the current Binance Futures adapter: futures symbols, historical 1m klines, and REST-based live polling.
+- **`src/services/binance.ts`** implements the Binance Futures adapter: futures symbols, historical 1m klines, and REST-based live polling.
+- **`src/services/rithmic.ts`** implements the browser side of the credential-based Rithmic connection. It talks to the local gateway over WebSocket and exposes the same market-data contract.
+- **`gateway/rithmic_gateway.py`** logs in to the Rithmic Ticker Plant with the supplied credentials, subscribes to last trades, and forwards normalized one-minute candles. It is intentionally market-data only.
+- **`gateway/README.md`** documents the Python gateway setup, required broker fields, and current scope.
 - **`src/store/useMarketDataStore.ts`** owns the active connection, loads historical data, starts/stops subscriptions, and maps provider symbols to normalized `MarketSymbol` values.
 - **`src/store/useBinanceStore.ts`** remains as a compatibility alias while consumers migrate to `useMarketDataStore`.
 - **`src/store/useBacktestStore.ts`** remains provider-agnostic and only receives normalized candles through `updateLiveCandle(kline)`.
 
-Rithmic is intentionally not connected yet. Its adapter can implement the same contract once the R|Protocol/API dev kit, credentials, and deployment gateway are available. Order routing is not part of the current market-data abstraction; it should be added as a separate execution interface after paper-trading connectivity is validated.
+Rithmic market data is connected through the local credential gateway. The current Phidias profile asks only for the user's Rithmic username and password; the gateway supplies the documented `Rithmic Paper Trading`/Chicago configuration and resolves the current ES front-month contract. The browser does not persist credentials. Direct R|Protocol/API authorization may still be required separately from ordinary R|Trader Pro or Quantower access. The gateway currently supports Ticker Plant login, last-trade subscriptions, and one-minute candle aggregation. It does not route orders. Order routing should be added as a separate execution interface after paper-trading connectivity and account-selection behavior are validated.
 
 The future execution boundary is defined in **`src/services/execution.ts`**. It models orders, order updates, fills, and broker positions without changing the current local simulation behavior.
 

@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 coverage/
+__pycache__/
+*.py[cod]
 
 # Editor directories and files
 .vscode/*
