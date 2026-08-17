@@ -17,6 +17,7 @@ import { useTradeOverlays } from '../../hooks/useTradeOverlays';
 import { SymbolLegend } from './SymbolLegend';
 import { ContextMenu } from './ContextMenu';
 import { useTradeStore } from '../../store/useTradeStore';
+import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useContextMenu } from '../../hooks/useContextMenu';
 import { CandleStyleEditor } from './CandleStyleEditor';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
@@ -30,6 +31,8 @@ interface TradingChartProps {
 export function TradingChart({ id, timeframe }: TradingChartProps) {
   const rawData = useBacktestStore(state => state.rawData);
   const currentIndex = useBacktestStore(state => state.currentIndex);
+  const marketDataLoading = useMarketDataStore(state => state.isLoading);
+  const marketDataSourceId = useMarketDataStore(state => state.sourceId);
 
   const isEditorOpen = useChartStyleStore(state => state.isEditorOpen);
   const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
@@ -42,6 +45,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   }, [rawData, currentIndex, timeframe]);
 
   const { chartRef, containerRef } = useChart({ containerId: id, aggregatedData, timeframe });
+  const isLiveDataLoading = marketDataLoading && marketDataSourceId !== null;
 
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
   const [overlayColor, setOverlayColor] = useState('#2196F3');
@@ -172,7 +176,11 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
         />
 
         <div className="flex-1 relative w-full h-full" onContextMenu={handleContextMenu}>
-          <ChartContainer id={id} containerRef={containerRef} />
+          <ChartContainer
+            id={id}
+            containerRef={containerRef}
+            isLoading={isLiveDataLoading}
+          />
 
           {/* Top-left indicator legend */}
           <IndicatorLegend

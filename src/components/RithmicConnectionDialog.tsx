@@ -6,7 +6,9 @@ interface RithmicConnectionDialogProps {
   isLoading: boolean;
   credentials: RithmicCredentials;
   error: string | null;
+  rememberCredentials: boolean;
   onCredentialsChange: (field: keyof RithmicCredentials, value: string) => void;
+  onRememberCredentialsChange: (remember: boolean) => void;
   onConnect: () => Promise<void>;
   onClose: () => void;
 }
@@ -15,8 +17,10 @@ export function RithmicConnectionDialog({
   isOpen,
   isLoading,
   credentials,
-  error,
+  // error,
+  rememberCredentials,
   onCredentialsChange,
+  onRememberCredentialsChange,
   onConnect,
   onClose
 }: RithmicConnectionDialogProps) {
@@ -34,7 +38,7 @@ export function RithmicConnectionDialog({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <h2 id="rithmic-dialog-title" className="text-lg font-semibold text-white">Connect to Rithmic</h2>
-            <p className="mt-1 text-xs leading-5 text-slate-400">Credentials are sent only to the local gateway and are not saved by the app.</p>
+            <p className="mt-1 text-xs leading-5 text-slate-400">Credentials are sent only to the local gateway. If enabled, they are encrypted before being stored in this browser.</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white" aria-label="Close dialog"><X size={18} /></button>
         </div>
@@ -55,6 +59,18 @@ export function RithmicConnectionDialog({
           <div className="mt-1 text-slate-400">Rithmic Paper Trading · Chicago Area · CME</div>
           <div className="mt-1 text-slate-500">The local gateway supplies the RAPI+ nameserver configuration.</div>
         </div>
+
+        <label className="mt-4 flex items-start gap-2 text-xs text-slate-300">
+          <input
+            type="checkbox"
+            checked={rememberCredentials}
+            onChange={event => onRememberCredentialsChange(event.target.checked)}
+            className="mt-0.5 accent-emerald-500"
+          />
+          <span>
+            <span className="block">Remember credentials on this device</span>
+          </span>
+        </label>
 
         {/* <p className="mt-4 text-[11px] leading-5 text-slate-500">Start <code className="text-slate-300">dotnet run --project gateway</code> first. This integration is market-data only; it never places orders.</p>
         {error && <div className="mt-3 text-xs text-red-400" role="alert">{error}</div>} */}

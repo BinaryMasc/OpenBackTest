@@ -309,7 +309,6 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     };
 
     set((state) => {
-      const newCurrentPositionTrades = [...state.currentPositionTrades, trade];
       const currentTrade: Trade = {
         ...trade,
         realizedPnL: position === 'flat' ? -fee : (position === 'long' ? -fee : (quantity <= activePositionSize ? (entryPrice! - price) * quantity * contractSize - fee : (entryPrice! - price) * activePositionSize * contractSize - fee)),
@@ -319,7 +318,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       };
       return {
         tradeHistory: [...state.tradeHistory, currentTrade],
-        currentPositionTrades: newCurrentPositionTrades
+        currentPositionTrades: [...state.currentPositionTrades, currentTrade]
       };
     });
   },
@@ -533,7 +532,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       };
       return {
         tradeHistory: [...state.tradeHistory, currentTrade],
-        currentPositionTrades: [...state.currentPositionTrades, trade]
+        currentPositionTrades: [...state.currentPositionTrades, currentTrade]
       };
     });
   },

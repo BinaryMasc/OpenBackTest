@@ -7,6 +7,11 @@ import { PlaybackBar } from './PlaybackBar';
 import { TradingPanel } from './TradingPanel';
 import { useTradeStore } from '../store/useTradeStore';
 import { RITHMIC_SOURCE_ID, type RithmicCredentials } from '../services/rithmic';
+import {
+  clearStoredRithmicCredentials,
+  loadStoredRithmicCredentials,
+  saveRithmicCredentials
+} from '../services/rithmicCredentialStorage';
 import { RithmicConnectionDialog } from './RithmicConnectionDialog';
 
 
@@ -41,6 +46,7 @@ export function Controls() {
   const [isSessionExpanded, setIsSessionExpanded] = useState(false);
   const [isRithmicDialogOpen, setIsRithmicDialogOpen] = useState(false);
   const [rithmicCredentials, setRithmicCredentials] = useState<RithmicCredentials>({ username: '', password: '' });
+  const [rememberRithmicCredentials, setRememberRithmicCredentials] = useState(true);
 
   const isRithmicConnected = sourceId === RITHMIC_SOURCE_ID && isConnected;
 
@@ -48,10 +54,20 @@ export function Controls() {
     setRithmicCredentials(current => ({ ...current, [field]: value }));
   };
 
+  const handleRememberRithmicCredentialsChange = (remember: boolean) => {
+    setRememberRithmicCredentials(remember);
+    if (!remember) void clearStoredRithmicCredentials();
+  };
+
   const handleRithmicConnect = async () => {
     await connectSource(RITHMIC_SOURCE_ID, { credentials: { ...rithmicCredentials } });
     const state = useMarketDataStore.getState();
     if (state.sourceId === RITHMIC_SOURCE_ID && state.isConnected) {
+      if (rememberRithmicCredentials) {
+        await saveRithmicCredentials(rithmicCredentials);
+      } else {
+        await clearStoredRithmicCredentials();
+      }
       setIsPresetsExpanded(false);
       setIsRithmicDialogOpen(false);
     }
@@ -61,6 +77,18 @@ export function Controls() {
     await connectDefaultSource();
     if (useMarketDataStore.getState().isConnected) setIsPresetsExpanded(false);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    void loadStoredRithmicCredentials().then(storedCredentials => {
+      if (!isMounted || !storedCredentials) return;
+      setRithmicCredentials(storedCredentials);
+      setRememberRithmicCredentials(true);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Auto-play logic
   useEffect(() => {
@@ -396,7 +424,7 @@ export function Controls() {
                 <button
                   onClick={() => setIsRithmicDialogOpen(true)}
                   disabled={isUploading || isMarketDataLoading}
-                  className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border border-slate-600/50 bg-dark-700 hover:bg-dark-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Zap size={18} />
                   Connect with Rithmic credentials
@@ -522,7 +550,9 @@ export function Controls() {
         isLoading={isMarketDataLoading && sourceId === RITHMIC_SOURCE_ID}
         credentials={rithmicCredentials}
         error={marketDataError}
+        rememberCredentials={rememberRithmicCredentials}
         onCredentialsChange={updateRithmicCredential}
+        onRememberCredentialsChange={handleRememberRithmicCredentialsChange}
         onConnect={handleRithmicConnect}
         onClose={() => setIsRithmicDialogOpen(false)}
       />
