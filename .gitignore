@@ -13,6 +13,10 @@ dist-ssr
 *.local
 coverage/
 
+# Local Rithmic gateway build output
+gateway/bin/
+gateway/obj/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

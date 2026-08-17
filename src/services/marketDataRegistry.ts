@@ -1,8 +1,10 @@
 import { BinanceService } from './binance';
+import { RithmicService } from './rithmic';
 import type { MarketDataSource } from './marketData';
 
 const MARKET_DATA_SOURCES: Record<string, MarketDataSource> = {
-  [BinanceService.id]: BinanceService
+  [BinanceService.id]: BinanceService,
+  [RithmicService.id]: RithmicService
 };
 
 export const DEFAULT_MARKET_DATA_SOURCE_ID = BinanceService.id;

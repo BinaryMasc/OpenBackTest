@@ -39,6 +39,17 @@ npm run build
 npm run dev
 ```
 
+### Rithmic market data
+
+OpenBackTest includes a read-only Rithmic market-data provider for the Phidias
+paper-trading profile (Rithmic Paper Trading / Chicago Area). It uses a small
+local .NET RAPI+ gateway because browser code cannot load the native RAPI+
+library directly. See [`gateway/README.md`](gateway/README.md) for setup.
+
+Start the gateway, start OpenBackTest, then choose **Connect with Rithmic
+credentials** in the data controls. Credentials are entered in the browser and
+forwarded only to the local gateway; they are not part of the repository.
+
 ### Testing
 The project uses `vitest` and `@testing-library/react` for unit testing. All tests are located in the `tests/` directory.
 
@@ -55,6 +66,6 @@ npm run coverage   # Run tests with coverage report
 - [x] Data: Real-time connection to live market (Crypto).
 - [x] Data: Provider-neutral market-data connection abstraction.
 - [x] Testing: Establish unit testing foundation for stores, hooks, and components.
-- [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies.
-- [ ] Data: Rithmic market-data adapter (requires Rithmic API access/dev kit).
+- [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies in execution-time.
+- [x] Data: Rithmic market-data adapter through a local RAPI+ gateway.
 - [ ] Trading: Broker execution adapters and live order routing.

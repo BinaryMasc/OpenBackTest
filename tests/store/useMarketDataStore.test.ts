@@ -59,4 +59,24 @@ describe('useMarketDataStore', () => {
     expect(closeConnection).toHaveBeenCalledOnce();
     expect(useMarketDataStore.getState().isConnected).toBe(false);
   });
+
+  it('forwards provider connection options', async () => {
+    let receivedOptions: unknown;
+    registerMarketDataSource({
+      id: 'options-source',
+      name: 'Options Source',
+      connect: async options => {
+        receivedOptions = options;
+        return connection;
+      }
+    });
+
+    await useMarketDataStore.getState().connectSource('options-source', {
+      credentials: { username: 'test-user', password: 'test-password' }
+    });
+
+    expect(receivedOptions).toEqual({
+      credentials: { username: 'test-user', password: 'test-password' }
+    });
+  });
 });

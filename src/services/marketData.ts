@@ -4,6 +4,11 @@ export interface MarketDataSubscription {
   close: () => void;
 }
 
+export interface MarketDataConnectionOptions {
+  credentials?: Record<string, string>;
+  settings?: Record<string, string | number | boolean>;
+}
+
 /**
  * An active connection to a market-data provider.
  *
@@ -32,5 +37,6 @@ export interface MarketDataConnection {
 export interface MarketDataSource {
   readonly id: string;
   readonly name: string;
-  connect: () => Promise<MarketDataConnection>;
+  readonly requiresCredentials?: boolean;
+  connect: (options?: MarketDataConnectionOptions) => Promise<MarketDataConnection>;
 }

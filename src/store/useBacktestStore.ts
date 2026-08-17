@@ -104,7 +104,13 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   updateLiveCandle: (kline: Candle) => {
     set((state) => {
       const rawData = [...state.rawData];
-      if (rawData.length === 0) return state;
+      if (rawData.length === 0) {
+        return {
+          rawData: [kline],
+          currentIndex: 0,
+          symbol: state.symbol || kline.symbol || ''
+        };
+      }
 
       const lastCandle = rawData[rawData.length - 1];
       if (kline.time === lastCandle.time) {

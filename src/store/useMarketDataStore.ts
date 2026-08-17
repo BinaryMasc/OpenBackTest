@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import type { MarketSymbol } from '../types';
-import type { MarketDataConnection, MarketDataSubscription } from '../services/marketData';
+import type {
+  MarketDataConnection,
+  MarketDataConnectionOptions,
+  MarketDataSubscription
+} from '../services/marketData';
 import {
   DEFAULT_MARKET_DATA_SOURCE_ID,
   getMarketDataSource
@@ -18,7 +22,7 @@ interface MarketDataState {
   connectionRef: MarketDataConnection | null;
   subscriptionRef: MarketDataSubscription | null;
 
-  connectSource: (sourceId: string) => Promise<void>;
+  connectSource: (sourceId: string, options?: MarketDataConnectionOptions) => Promise<void>;
   connectDefaultSource: () => Promise<void>;
   disconnectSource: () => void;
   setSymbol: (symbol: string) => Promise<void>;
@@ -79,7 +83,7 @@ function closeActiveConnection(state: Pick<MarketDataState, 'subscriptionRef' | 
 export const useMarketDataStore = create<MarketDataState>((set, get) => ({
   ...initialState,
 
-  connectSource: async (sourceId: string) => {
+  connectSource: async (sourceId: string, options?: MarketDataConnectionOptions) => {
     const requestId = ++connectionRequestId;
     closeActiveConnection(get());
 
@@ -104,7 +108,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
     });
 
     try {
-      const connection = await source.connect();
+      const connection = await source.connect(options);
       const symbols = await connection.listSymbols();
 
       if (requestId !== connectionRequestId) {

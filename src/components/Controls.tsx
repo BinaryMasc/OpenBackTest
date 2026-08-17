@@ -6,6 +6,8 @@ import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
 import { TradingPanel } from './TradingPanel';
 import { useTradeStore } from '../store/useTradeStore';
+import { RITHMIC_SOURCE_ID, type RithmicCredentials } from '../services/rithmic';
+import { RithmicConnectionDialog } from './RithmicConnectionDialog';
 
 
 const PRESETS = [
@@ -22,12 +24,43 @@ export function Controls() {
     loadData, setPlaybackSpeed, setUploading, setUploadProgress, setMode
   } = useBacktestStore();
 
-  const { isConnected, sourceName, error: marketDataError, connectDefaultSource, disconnectSource } = useMarketDataStore();
+  const {
+    sourceId,
+    isConnected,
+    isLoading: isMarketDataLoading,
+    sourceName,
+    error: marketDataError,
+    connectDefaultSource,
+    connectSource,
+    disconnectSource
+  } = useMarketDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sessionInputRef = useRef<HTMLInputElement>(null);
   const [isPresetsExpanded, setIsPresetsExpanded] = useState(true);
   const [isSessionExpanded, setIsSessionExpanded] = useState(false);
+  const [isRithmicDialogOpen, setIsRithmicDialogOpen] = useState(false);
+  const [rithmicCredentials, setRithmicCredentials] = useState<RithmicCredentials>({ username: '', password: '' });
+
+  const isRithmicConnected = sourceId === RITHMIC_SOURCE_ID && isConnected;
+
+  const updateRithmicCredential = (field: keyof RithmicCredentials, value: string) => {
+    setRithmicCredentials(current => ({ ...current, [field]: value }));
+  };
+
+  const handleRithmicConnect = async () => {
+    await connectSource(RITHMIC_SOURCE_ID, { credentials: { ...rithmicCredentials } });
+    const state = useMarketDataStore.getState();
+    if (state.sourceId === RITHMIC_SOURCE_ID && state.isConnected) {
+      setIsPresetsExpanded(false);
+      setIsRithmicDialogOpen(false);
+    }
+  };
+
+  const handleDefaultConnect = async () => {
+    await connectDefaultSource();
+    if (useMarketDataStore.getState().isConnected) setIsPresetsExpanded(false);
+  };
 
   // Auto-play logic
   useEffect(() => {
@@ -202,7 +235,7 @@ export function Controls() {
         } else {
           alert('Invalid session file format.');
         }
-      } catch (err) {
+      } catch {
         alert('Failed to parse session file.');
       }
 
@@ -339,8 +372,8 @@ export function Controls() {
               </button>
 
               <button
-                onClick={isConnected ? disconnectSource : connectDefaultSource}
-                disabled={isUploading}
+                onClick={isConnected ? disconnectSource : handleDefaultConnect}
+                disabled={isUploading || isMarketDataLoading}
                 className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
                   : 'bg-dark-700 hover:bg-dark-600 text-white border-slate-600/50'
@@ -354,10 +387,21 @@ export function Controls() {
                 ) : (
                   <>
                     <Zap size={18} />
-                    Connect Live Market Data
+                    Connect Binance Market Data
                   </>
                 )}
               </button>
+
+              {!isRithmicConnected && (
+                <button
+                  onClick={() => setIsRithmicDialogOpen(true)}
+                  disabled={isUploading || isMarketDataLoading}
+                  className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Zap size={18} />
+                  Connect with Rithmic credentials
+                </button>
+              )}
 
               <div className="pt-4">
                 <button
@@ -472,6 +516,16 @@ export function Controls() {
         </div>
 
       </div>
+
+      <RithmicConnectionDialog
+        isOpen={isRithmicDialogOpen}
+        isLoading={isMarketDataLoading && sourceId === RITHMIC_SOURCE_ID}
+        credentials={rithmicCredentials}
+        error={marketDataError}
+        onCredentialsChange={updateRithmicCredential}
+        onConnect={handleRithmicConnect}
+        onClose={() => setIsRithmicDialogOpen(false)}
+      />
     </div>
   );
 }
