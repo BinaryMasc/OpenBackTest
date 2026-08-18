@@ -46,7 +46,7 @@ describe('custom overlay renderers', () => {
   it('registers every custom overlay with the expected drawing step', () => {
     expect(registered.mock.calls.map(([config]) => config.name)).toEqual([
       'rect', 'pencil', 'fibonacciLine', 'circle', 'text',
-      'positionLine', 'tpLine', 'slLine', 'measurement', 'tradeArrow'
+      'positionLine', 'brokerLine', 'tpLine', 'slLine', 'measurement', 'tradeArrow'
     ]);
     expect(configFor('rect').totalStep).toBe(3);
     expect(configFor('pencil').totalStep).toBe(1);

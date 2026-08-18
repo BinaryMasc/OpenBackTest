@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { init, dispose, type Chart, TooltipShowRule } from 'klinecharts';
 import type { Candle, Timeframe } from '../types';
 import { registerCustomOverlays } from '../lib/chart/overlays';
@@ -14,6 +14,7 @@ interface UseChartOptions {
 export function useChart({ containerId, aggregatedData, timeframe }: UseChartOptions) {
   const chartRef = useRef<Chart | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isReady, setIsReady] = useState(false);
   const prevTimeframeRef = useRef(timeframe);
   const prevDataLengthRef = useRef(0);
 
@@ -28,6 +29,7 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
 
     if (chart) {
       chartRef.current = chart;
+      setIsReady(true);
       chart.setStyles('dark');
       
       const currentStyle = useChartStyleStore.getState();
@@ -100,6 +102,8 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
         containerRef.current.removeEventListener('dblclick', handleDblClick);
       }
       dispose(containerId);
+      chartRef.current = null;
+      setIsReady(false);
     };
   }, []);
 
@@ -156,7 +160,11 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
         }, 50);
       }
     } else {
-      if (chartData.length >= 2) {
+      const lastChartTimestamp = dataList[dataList.length - 1]?.timestamp;
+      const lastDataTimestamp = chartData[chartData.length - 1].timestamp;
+      const startedNewCandle = chartData.length > dataList.length
+        || (lastChartTimestamp !== undefined && lastDataTimestamp > lastChartTimestamp);
+      if (chartData.length >= 2 && startedNewCandle) {
         // Update the second-to-last candle as well to ensure its final closed state is rendered
         chartRef.current.updateData(chartData[chartData.length - 2]);
       }
@@ -184,5 +192,5 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
     return () => observer.disconnect();
   }, []);
 
-  return { chartRef, containerRef };
+  return { chartRef, containerRef, isReady };
 }

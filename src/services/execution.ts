@@ -32,7 +32,7 @@ export type OrderSide = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit' | 'stop' | 'stop-limit';
 export type OrderStatus = 'pending' | 'working' | 'partially-filled' | 'filled' | 'cancelled' | 'rejected';
 
-/** Provider-neutral order contract used by actual-account mode. */
+/** Provider-neutral order contract used by live-account mode. */
 export interface OrderRequest {
   /** Selected account context, supplied by the account store when needed. */
   accountId?: string;

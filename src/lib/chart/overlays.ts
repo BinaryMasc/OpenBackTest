@@ -203,6 +203,48 @@ export function registerCustomOverlays(): void {
   });
 
   registerOverlay({
+    name: 'brokerLine',
+    totalStep: 2,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length === 0) return [];
+      const y = coordinates[0].y;
+      const data = overlay.extendData as { text?: string; color?: string; dashed?: boolean } | undefined;
+      const color = data?.color || '#60a5fa';
+      const text = data?.text || '';
+
+      return [
+        {
+          type: 'line',
+          attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+          styles: {
+            style: data?.dashed === false ? 'solid' : 'dashed',
+            color,
+            dashedValue: [5, 4],
+            size: 2,
+          },
+        },
+        {
+          type: 'text',
+          attrs: { x: 10, y: y - 10, text, align: 'left', baseline: 'bottom' },
+          styles: {
+            color: '#fff',
+            size: 11,
+            backgroundColor: color,
+            paddingLeft: 5,
+            paddingRight: 5,
+            paddingTop: 3,
+            paddingBottom: 3,
+            borderRadius: 3,
+          },
+        },
+      ];
+    },
+  });
+
+  registerOverlay({
     name: 'tpLine',
     totalStep: 2,
     needDefaultPointFigure: true,

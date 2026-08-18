@@ -22,6 +22,7 @@ import { useContextMenu } from '../../hooks/useContextMenu';
 import { CandleStyleEditor } from './CandleStyleEditor';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
 import type { Timeframe } from '../../types';
+import { fillShortCandleGaps } from '../../utils/candleGaps';
 
 interface TradingChartProps {
   id: string;
@@ -41,10 +42,13 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const aggregatedData = useMemo(() => {
     if (rawData.length === 0 || currentIndex === -1) return [];
     const visibleData = rawData.slice(0, currentIndex + 1);
-    return aggregateCandles(visibleData, timeframe);
-  }, [rawData, currentIndex, timeframe]);
+    const chartData = marketDataSourceId === 'rithmic'
+      ? fillShortCandleGaps(visibleData)
+      : visibleData;
+    return aggregateCandles(chartData, timeframe);
+  }, [rawData, currentIndex, timeframe, marketDataSourceId]);
 
-  const { chartRef, containerRef } = useChart({ containerId: id, aggregatedData, timeframe });
+  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, aggregatedData, timeframe });
   const isLiveDataLoading = marketDataLoading && marketDataSourceId !== null;
 
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
@@ -70,7 +74,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();
 
   const indicators = useIndicators(chartRef);
-  useTradeOverlays(chartRef);
+  useTradeOverlays(chartRef, chartReady);
 
   const handleOverlayCreated = useCallback((overlay: Overlay) => {
     recordAdd(overlay);

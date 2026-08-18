@@ -30,7 +30,7 @@ export interface MarketDataConnection {
   ) => MarketDataSubscription;
   /**
    * Providers that also expose broker execution can share their authenticated
-   * connection with the actual-account mode. Market-data-only providers leave
+   * connection with the live-account mode. Market-data-only providers leave
    * this undefined.
    */
   getExecutionConnection?: () => ExecutionConnection;

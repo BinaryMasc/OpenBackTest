@@ -20,7 +20,7 @@ interface ExecutionStoreState {
   connect: () => Promise<void>;
   selectAccount: (accountId: string) => Promise<void>;
   placeOrder: (order: OrderRequest) => Promise<OrderUpdate | null>;
-  cancelOrder: (orderId: string) => Promise<void>;
+  cancelOrder: (orderId: string) => Promise<OrderUpdate | null>;
   cancelAll: (symbol?: string) => Promise<void>;
   flatten: (symbol?: string) => Promise<void>;
   disconnect: () => void;
@@ -182,12 +182,28 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
 
     cancelOrder: async (orderId: string) => {
       const connection = get().connection;
-      if (!connection) return;
+      if (!connection) return null;
       set({ isSubmitting: true, error: null });
       try {
-        await connection.cancelOrder(orderId);
+        const update = await connection.cancelOrder(orderId);
+        const accountId = get().selectedAccountId;
+        const current = get().accountState;
+        if (accountId && current && update.accountId && update.accountId !== accountId) return update;
+        if (current) {
+          set({
+            accountState: {
+              ...current,
+              orders: [
+                ...current.orders.filter(order => order.orderId !== update.orderId),
+                update,
+              ],
+            },
+          });
+        }
+        return update;
       } catch (error) {
         set({ error: getErrorMessage(error) });
+        return null;
       } finally {
         set({ isSubmitting: false });
       }
@@ -208,10 +224,31 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
 
     flatten: async (symbol?: string) => {
       const connection = get().connection;
-      if (!connection) return;
+      const accountId = get().selectedAccountId;
+      if (!connection || !accountId) return;
       set({ isSubmitting: true, error: null });
       try {
         await connection.flatten(symbol);
+        // Flatten is asynchronous at the broker. Refresh until the account
+        // snapshot no longer reports a position or working order for symbol,
+        // so stale entry/exit lines do not look like an opposite trade.
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 150 : 250));
+          const state = await connection.getAccountState(accountId);
+          if (get().connection !== connection || get().selectedAccountId !== accountId) return;
+          set({ accountState: state });
+          if (!symbol) break;
+          const normalizedSymbol = symbol.toUpperCase();
+          const sameSymbol = (value: string) => {
+            const normalized = value.toUpperCase();
+            return normalized === normalizedSymbol || normalized.split('.')[0] === normalizedSymbol.split('.')[0];
+          };
+          const hasPosition = state.positions.some(position => sameSymbol(position.symbol) && position.quantity > 0);
+          const hasWorkingOrder = state.orders.some(order =>
+            sameSymbol(order.symbol) && (order.status === 'pending' || order.status === 'working' || order.status === 'partially-filled')
+          );
+          if (!hasPosition && !hasWorkingOrder) break;
+        }
       } catch (error) {
         set({ error: getErrorMessage(error) });
       } finally {

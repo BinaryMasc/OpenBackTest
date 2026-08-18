@@ -200,8 +200,9 @@ sealed class GatewayCallbacks : RCallbacks
     public override void PnlUpdate(PnlInfo info) => CallbackRelay.Dispatch(nameof(PnlUpdate), info);
     public override void PnlReplay(PnlReplayInfo info) => CallbackRelay.Dispatch(nameof(PnlReplay), info);
     public override void RefData(RefDataInfo info) => CallbackRelay.Dispatch(nameof(RefData), info);
+    public override void Bar(BarInfo info) => CallbackRelay.Dispatch(nameof(Bar), info);
+    public override void BarReplay(BarReplayInfo info) => CallbackRelay.Dispatch(nameof(BarReplay), info);
     public override void TradePrint(TradeInfo info) => CallbackRelay.Dispatch(nameof(TradePrint), info);
-    public override void TradeReplay(TradeReplayInfo info) => CallbackRelay.Dispatch(nameof(TradeReplay), info);
     public override void TradeRouteList(TradeRouteListInfo info) => CallbackRelay.Dispatch(nameof(TradeRouteList), info);
 }
 
@@ -231,6 +232,39 @@ sealed class CandleBuffer
             candle.Low = Math.Min(candle.Low, price);
             candle.Close = price;
             candle.Volume += Math.Max(0, volume);
+            while (series.Count > MaximumCandles) series.Remove(series.First().Key);
+            return candle.Copy();
+        }
+    }
+
+    public Candle Upsert(Candle incoming)
+    {
+        var key = incoming.Symbol;
+        lock (gate)
+        {
+            if (!candles.TryGetValue(key, out var series))
+            {
+                series = new SortedDictionary<long, Candle>();
+                candles[key] = series;
+            }
+
+            if (!series.TryGetValue(incoming.Time, out var candle))
+            {
+                candle = incoming.Copy();
+                series[incoming.Time] = candle;
+            }
+            else
+            {
+                // Bar replay may deliver an update for the still-forming bar.
+                // Replace its OHLCV snapshot instead of adding the volume again.
+                candle.Open = incoming.Open;
+                candle.High = incoming.High;
+                candle.Low = incoming.Low;
+                candle.Close = incoming.Close;
+                candle.Volume = incoming.Volume;
+                candle.Symbol = incoming.Symbol;
+            }
+
             while (series.Count > MaximumCandles) series.Remove(series.First().Key);
             return candle.Copy();
         }
@@ -337,12 +371,14 @@ sealed class RapiSession
     // between login and the first reference-data callback.
     private RCallbacks? callbacks;
     private TaskCompletionSource<object?>? referenceDataWaiter;
-    private TaskCompletionSource<object?>? replayWaiter;
+    private TaskCompletionSource<object?>? barReplayWaiter;
     private TaskCompletionSource<object?>? accountListWaiter;
     private TaskCompletionSource<object?>? tradeRouteWaiter;
     private readonly Dictionary<string, TaskCompletionSource<object?>> pnlWaiters = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TaskCompletionSource<object?>> orderWaiters = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> pendingOrderQuantities = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object candleBroadcastGate = new();
+    private readonly Dictionary<string, (long CandleTime, long PublishedAtMs)> candleBroadcasts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, object> accountHandles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, GatewayAccount> accounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, GatewayAccountState> accountStates = new(StringComparer.OrdinalIgnoreCase);
@@ -350,6 +386,7 @@ sealed class RapiSession
     private readonly HashSet<string> accountSubscriptions = new(StringComparer.OrdinalIgnoreCase);
     private bool tradeRoutesLoaded;
     private string? activeAccountId;
+    private bool barReplayActive;
     private bool closed;
 
     public RapiSession(WebSocket browser, JsonSerializerOptions serializerOptions)
@@ -661,6 +698,12 @@ sealed class RapiSession
             accountStates[accountId] = state;
         }
 
+        // replayPnl is a snapshot. Clear the previous position collection
+        // first so flattening an account cannot leave a stale position line
+        // that looks like a second, opposite trade.
+        state.Positions.Clear();
+        state.Statistics.OpenPositions = 0;
+        state.UnrealizedPnL = 0;
         EnsureAccountFeeds(rawAccount, accountId);
         var waiter = NewWaiter();
         pnlWaiters[accountId] = waiter;
@@ -712,22 +755,32 @@ sealed class RapiSession
     private async Task<bool> ReplayHistoryWindowAsync(string exchange, string symbol, int start, int end)
     {
         var waiter = NewWaiter();
-        replayWaiter = waiter;
+        barReplayWaiter = waiter;
+        barReplayActive = true;
         try
         {
-            Invoke(engine!, "replayTrades", exchange, symbol, start, end, new object());
+            var parameters = Create(assembly!, "com.omnesys.rapi.ReplayBarParams");
+            SetAny(parameters, "Exchange", exchange);
+            SetAny(parameters, "Symbol", symbol);
+            var barType = assembly!.GetType("com.omnesys.rapi.BarType", throwOnError: true)!;
+            SetAny(parameters, "Type", Enum.Parse(barType, "Minute"));
+            SetAny(parameters, "SpecifiedMinutes", 1);
+            SetAny(parameters, "StartSsboe", start);
+            SetAny(parameters, "EndSsboe", end);
+            Invoke(engine!, "replayBars", parameters);
             var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(90));
             var responseCode = ReadInt(info, "RpCode");
             // Rithmic uses code 7 when a replay window has no older data. This
             // is a normal end-of-history condition, not a failed chart load.
             if (responseCode == 7) return false;
             if (responseCode != 0)
-                throw new InvalidOperationException($"Rithmic trade replay rejected {exchange}.{symbol} (code {responseCode}).");
+                throw new InvalidOperationException($"Rithmic bar replay rejected {exchange}.{symbol} (code {responseCode}).");
             return true;
         }
         finally
         {
-            replayWaiter = null;
+            barReplayActive = false;
+            barReplayWaiter = null;
         }
     }
 
@@ -757,8 +810,11 @@ sealed class RapiSession
             case "FillReport":
                 ProcessFillReport(info);
                 break;
-            case "TradeReplay":
-                replayWaiter?.TrySetResult(info);
+            case "BarReplay":
+                barReplayWaiter?.TrySetResult(info);
+                break;
+            case "Bar":
+                ProcessBar(info);
                 break;
             case "TradePrint":
                 ProcessTrade(info);
@@ -1119,6 +1175,20 @@ sealed class RapiSession
         // Cancel first so a working opening order cannot re-enter the position
         // while the broker is processing the flatten request.
         Invoke(engine!, "cancelAllOrders", rawAccount, "M", "OpenBackTest", "OpenBackTest");
+        if (accountStates.TryGetValue(activeAccountId, out var state))
+        {
+            var qualifiedSymbol = Qualify(parsed.Symbol, parsed.Exchange);
+            foreach (var order in state.Orders.Where(item =>
+                         item.Symbol.Equals(qualifiedSymbol, StringComparison.OrdinalIgnoreCase)
+                         && item.Status is "pending" or "working" or "partially-filled"))
+            {
+                order.Status = "cancelled";
+            }
+            state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
+            state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if (accountSubscriptions.Contains(activeAccountId))
+                _ = SendAsync(new { type = "accountState", state });
+        }
         await Task.Delay(250);
         Invoke(engine!, "exitPosition", rawAccount, parsed.Exchange, parsed.Symbol, "M", "OpenBackTest", "OpenBackTest", "", "OpenBackTest", new object());
     }
@@ -1136,8 +1206,52 @@ sealed class RapiSession
 
         var candle = candleBuffer.Add(symbol, exchange, price, size, timestamp);
         var callbackType = ReadString(info, "CallbackType") ?? string.Empty;
-        if (!callbackType.Contains("History", StringComparison.OrdinalIgnoreCase))
+        if (!callbackType.Contains("History", StringComparison.OrdinalIgnoreCase) && ShouldPublishCandle(candle))
             _ = SendAsync(new { type = "candle", candle });
+    }
+
+    private void ProcessBar(object info)
+    {
+        var open = ReadDouble(info, "OpenPrice");
+        var high = ReadDouble(info, "HighPrice");
+        var low = ReadDouble(info, "LowPrice");
+        var close = ReadDouble(info, "ClosePrice");
+        var timestamp = ReadLong(info, "StartSsboe");
+        if (open <= 0 || high <= 0 || low <= 0 || close <= 0 || timestamp <= 0) return;
+
+        var firstSymbol = config.Symbols[0];
+        var symbol = ReadString(info, "Symbol") ?? firstSymbol.Symbol;
+        var exchange = ReadString(info, "Exchange") ?? firstSymbol.Exchange;
+        var candle = candleBuffer.Upsert(new Candle
+        {
+            Time = timestamp - (timestamp % 60),
+            Open = open,
+            High = high,
+            Low = low,
+            Close = close,
+            Volume = ReadLong(info, "Volume"),
+            Symbol = Qualify(symbol, exchange)
+        });
+
+        if (!barReplayActive && ShouldPublishCandle(candle))
+            _ = SendAsync(new { type = "candle", candle });
+    }
+
+    private bool ShouldPublishCandle(Candle candle)
+    {
+        var now = Environment.TickCount64;
+        lock (candleBroadcastGate)
+        {
+            if (candleBroadcasts.TryGetValue(candle.Symbol, out var previous)
+                && previous.CandleTime == candle.Time
+                && now - previous.PublishedAtMs < 100)
+            {
+                return false;
+            }
+
+            candleBroadcasts[candle.Symbol] = (candle.Time, now);
+            return true;
+        }
     }
 
     private async Task WaitForStateAsync(string property, string operation, TimeSpan timeout)

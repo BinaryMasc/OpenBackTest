@@ -95,7 +95,7 @@ export function ActualAccountPanel() {
         <div>
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <ShieldCheck size={12} className="text-amber-400" />
-            Actual Account
+            Live Account
           </div>
           <div className="mt-1 text-xs text-slate-400">Broker-sourced data and live execution</div>
         </div>

@@ -286,8 +286,8 @@ export function Controls() {
   const currentDate = currentCandle
     ? new Date(currentCandle.time * 1000).toISOString().replace('T', ' ').substring(0, 19)
     : 'No Data';
-  const isActualMode = mode === 'actual';
-  const showFileDataControls = !isActualMode;
+  const isLiveMode = mode === 'live';
+  const showFileDataControls = !isLiveMode;
 
   return (
     <div className="flex flex-col h-full bg-dark-800 border-r border-dark-700 w-80 p-6 shadow-xl z-10 text-sm">
@@ -297,7 +297,7 @@ export function Controls() {
           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-500 to-emerald-400">OpenBackTest</h1>
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-slate-400 text-xs">Manual Strategy Tester</p>
+          <p className="text-slate-400 text-xs">Integrated trading workstation</p>
           <a
             href="https://github.com/BinaryMasc/OpenBackTest"
             target="_blank"
@@ -345,14 +345,14 @@ export function Controls() {
               Simulation
             </button>
             <button
-              onClick={() => setMode('actual')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'actual'
+              onClick={() => setMode('live')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'live'
                 ? 'bg-amber-600 text-white shadow-lg'
                 : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <ShieldCheck size={14} />
-              Actual
+              Live
             </button>
           </div>
         </div>
@@ -402,7 +402,7 @@ export function Controls() {
         {
           !(mode === 'simulation' && rawData.length > 0) && (
             <div className="mb-6 space-y-2">
-              <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">{isActualMode ? 'Broker Data Source' : 'Data Source'}</h3>
+              <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">{isLiveMode ? 'Broker Data Source' : 'Data Source'}</h3>
               {showFileDataControls && (
                 <>
                   <input
@@ -423,7 +423,7 @@ export function Controls() {
                 </>
               )}
 
-              {!isActualMode && (
+              {!isLiveMode && (
                 <button
                   onClick={isConnected ? disconnectSource : handleDefaultConnect}
                   disabled={isUploading || isMarketDataLoading}
@@ -446,7 +446,7 @@ export function Controls() {
                 </button>
               )}
 
-              {isActualMode && isConnected && (
+              {isLiveMode && isConnected && (
                 <button
                   onClick={disconnectSource}
                   disabled={isUploading || isMarketDataLoading}
@@ -544,7 +544,7 @@ export function Controls() {
           </div>
         </div> */}
 
-          {!isActualMode && !isConnected && (
+          {!isLiveMode && !isConnected && (
             <div>
               <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
               <input
@@ -570,7 +570,7 @@ export function Controls() {
           {mode === 'simulation' && (
             <TradingPanel />
           )}
-          {mode === 'actual' && (
+          {mode === 'live' && (
             <ActualAccountPanel />
           )}
         </div>

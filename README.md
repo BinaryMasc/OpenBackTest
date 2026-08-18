@@ -22,8 +22,9 @@ Check the [Codebase Guide](CODEBASE.md) for a detailed file-by-file documentatio
 - Import historical data and visualize it on a chart.
 - Simulate market data realtime.
 - Backtest with your trading strategy.
-- Backtest analysis tools to improve your trading skills.
-- Draw on the charts and add indicators to analyze the data.
+- Backtest analysis tools, chart tools and indicators.
+- Live broker data (Rithmic, Binance)
+- Live order execution.
 
 ### Data import format
 
@@ -39,10 +40,10 @@ npm run build
 npm run dev
 ```
 
-### Rithmic market data and actual account
+### Rithmic market data and live account
 
 OpenBackTest includes a Rithmic provider for the Phidias paper-trading profile
-(Rithmic Paper Trading / Chicago Area). The Actual Trade mode shows broker
+(Rithmic Paper Trading / Chicago Area). The Live Trade mode shows broker
 account statistics and can route market orders, cancel orders, and flatten a
 position through the local .NET RAPI+ gateway. See
 [`gateway/README.md`](gateway/README.md) for setup and live-mode precautions.
@@ -69,5 +70,5 @@ npm run coverage   # Run tests with coverage report
 - [x] Testing: Establish unit testing foundation for stores, hooks, and components.
 - [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies in execution-time.
 - [x] Data: Rithmic market-data adapter through a local RAPI+ gateway.
-- [x] Trading: Provider-neutral actual-account contract with Rithmic adapter.
+- [x] Trading: Provider-neutral live-account contract with Rithmic adapter.
 - [ ] Trading: Additional execution adapters (for example, Binance).

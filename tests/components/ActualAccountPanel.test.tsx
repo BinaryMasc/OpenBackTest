@@ -14,7 +14,7 @@ vi.mock('../../src/store/useExecutionStore', () => ({ useExecutionStore: executi
 
 import { ActualAccountPanel } from '../../src/components/ActualAccountPanel';
 
-describe('ActualAccountPanel', () => {
+describe('LiveAccountPanel', () => {
   const accountState: ExecutionAccountState = {
     account: { id: 'paper-1', displayName: 'Paper Account' },
     balance: 10000,
@@ -56,7 +56,7 @@ describe('ActualAccountPanel', () => {
   it('renders live account statistics and execution controls', () => {
     render(<ActualAccountPanel />);
 
-    expect(screen.getByText('Actual Account')).toBeInTheDocument();
+    expect(screen.getByText('Live Account')).toBeInTheDocument();
     expect(screen.getByText('Live Account Statistics')).toBeInTheDocument();
     expect(screen.getByText('$10,125.00')).toBeInTheDocument();
     expect(screen.getByText('Buy Market')).toBeInTheDocument();

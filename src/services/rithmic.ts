@@ -15,7 +15,7 @@ import type {
 } from './marketData';
 
 export const RITHMIC_SOURCE_ID = 'rithmic';
-export const RITHMIC_SOURCE_NAME = 'Phidias Rithmic';
+export const RITHMIC_SOURCE_NAME = 'Rithmic';
 export const DEFAULT_RITHMIC_GATEWAY_ADDRESS = 'http://127.0.0.1:8765';
 
 export interface RithmicCredentials {
@@ -73,6 +73,8 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
   private readonly socket: WebSocket;
   private readonly symbols: MarketSymbol[];
   private readonly candleHandlers = new Set<(candle: Candle) => void>();
+  private readonly pendingCandles = new Map<string, Candle>();
+  private readonly candleFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly accountHandlers = new Map<string, Set<(state: ExecutionAccountState) => void>>();
   private readonly orderHandlers = new Set<(update: OrderUpdate) => void>();
   private readonly fillHandlers = new Set<(fill: ExecutionFill) => void>();
@@ -89,7 +91,7 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
     socket.onmessage = event => {
       const message = JSON.parse(String(event.data)) as GatewayMessage;
       if (message.type === 'candle' && message.candle) {
-        this.candleHandlers.forEach(handler => handler(message.candle!));
+        this.queueCandle(message.candle);
         return;
       }
 
@@ -250,6 +252,9 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
   };
 
   close = (): void => {
+    this.candleFlushTimers.forEach(timer => clearTimeout(timer));
+    this.candleFlushTimers.clear();
+    this.pendingCandles.clear();
     this.pending.forEach(request => {
       clearTimeout(request.timeout);
       request.reject(new Error('Rithmic connection closed'));
@@ -260,6 +265,23 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
     this.fillHandlers.clear();
     this.socket.close();
   };
+
+  private queueCandle(candle: Candle): void {
+    const key = candle.symbol || 'default';
+    this.pendingCandles.set(key, candle);
+    if (this.candleFlushTimers.has(key)) return;
+
+    // Rithmic emits one candle update per trade print. Coalesce bursts while
+    // retaining the most recent OHLCV value for the minute.
+    const timer = setTimeout(() => {
+      this.candleFlushTimers.delete(key);
+      const latest = this.pendingCandles.get(key);
+      if (!latest) return;
+      this.pendingCandles.delete(key);
+      this.candleHandlers.forEach(handler => handler(latest));
+    }, 50);
+    this.candleFlushTimers.set(key, timer);
+  }
 
   private request(message: Record<string, unknown>): Promise<GatewayMessage> {
     const requestId = createRequestId();

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Candle, Timeframe, ChartConfig } from '../types';
+import { MAX_SYNTHETIC_CANDLE_GAP_SECONDS } from '../utils/candleGaps';
 
 
 interface BacktestState {
@@ -11,7 +12,7 @@ interface BacktestState {
   playbackSpeed: number; // ms per tick
   isUploading: boolean;
   uploadProgress: number; // 0-100
-  mode: 'playback' | 'simulation' | 'actual';
+  mode: 'playback' | 'simulation' | 'live';
 
   loadData: (data: Candle[], symbol?: string) => void;
   setUploading: (uploading: boolean) => void;
@@ -26,7 +27,7 @@ interface BacktestState {
   setCurrentIndex: (index: number) => void;
   rewind: () => void;
   fastForward: () => void;
-  setMode: (mode: 'playback' | 'simulation' | 'actual') => void;
+  setMode: (mode: 'playback' | 'simulation' | 'live') => void;
   getCurrentTickTime: () => number | null;
   importState: (state: Partial<BacktestState>) => void;
   updateLiveCandle: (kline: Candle) => void;
@@ -46,7 +47,7 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   loadData: (data: Candle[], symbol?: string) => set({ 
     rawData: data, 
     symbol: symbol ?? '',
-    currentIndex: get().mode === 'actual' ? data.length - 1 : Math.min(100, data.length - 1),
+    currentIndex: get().mode === 'live' ? data.length - 1 : Math.min(100, data.length - 1),
     isPlaying: false,
     isUploading: false,
     uploadProgress: 0
@@ -91,9 +92,9 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     currentIndex: Math.min(state.currentIndex + 10, state.rawData.length - 1)
   })),
 
-  setMode: (mode: 'playback' | 'simulation' | 'actual') => set(state => ({
+  setMode: (mode: 'playback' | 'simulation' | 'live') => set(state => ({
     mode,
-    currentIndex: mode === 'actual' && state.rawData.length > 0
+    currentIndex: mode === 'live' && state.rawData.length > 0
       ? state.rawData.length - 1
       : state.currentIndex
   })),
@@ -104,7 +105,16 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     return rawData[currentIndex].time;
   },
 
-  importState: (state: Partial<BacktestState>) => set((prev) => ({ ...prev, ...state })),
+  importState: (state: Partial<BacktestState>) => set((prev) => {
+    // Migrate sessions saved before the mode was renamed from Actual to Live.
+    const importedMode = (state as { mode?: string }).mode;
+    const mode = importedMode === 'actual' ? 'live' : importedMode;
+    return {
+      ...prev,
+      ...state,
+      ...(mode ? { mode: mode as BacktestState['mode'] } : {})
+    };
+  }),
 
   updateLiveCandle: (kline: Candle) => {
     set((state) => {
@@ -121,6 +131,21 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
       if (kline.time === lastCandle.time) {
         rawData[rawData.length - 1] = kline;
       } else if (kline.time > lastCandle.time) {
+        const intervalSeconds = 60;
+        const gapSeconds = kline.time - lastCandle.time;
+        if (gapSeconds > intervalSeconds && gapSeconds <= MAX_SYNTHETIC_CANDLE_GAP_SECONDS) {
+          for (let time = lastCandle.time + intervalSeconds; time < kline.time; time += intervalSeconds) {
+            rawData.push({
+              time,
+              open: lastCandle.close,
+              high: lastCandle.close,
+              low: lastCandle.close,
+              close: lastCandle.close,
+              volume: 0,
+              symbol: lastCandle.symbol || kline.symbol,
+            });
+          }
+        }
         rawData.push(kline);
       } else if (rawData.length >= 2 && kline.time === rawData[rawData.length - 2].time) {
         rawData[rawData.length - 2] = kline;
