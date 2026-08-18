@@ -111,7 +111,7 @@ describe('secure Rithmic credential storage', () => {
   });
 
   it('encrypts, persists, and restores credentials without localStorage', async () => {
-    const credentials = { username: 'test-user', password: 'test-password' };
+    const credentials = { username: 'test-user', password: 'test-password', gatewayUrl: 'http://127.0.0.1:8765' };
     expect(await saveRithmicCredentials(credentials)).toBe(true);
     expect(await loadStoredRithmicCredentials()).toEqual(credentials);
     expect(globalThis.localStorage?.length ?? 0).toBe(0);

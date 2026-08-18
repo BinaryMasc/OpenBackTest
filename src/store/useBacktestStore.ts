@@ -11,7 +11,7 @@ interface BacktestState {
   playbackSpeed: number; // ms per tick
   isUploading: boolean;
   uploadProgress: number; // 0-100
-  mode: 'playback' | 'simulation';
+  mode: 'playback' | 'simulation' | 'actual';
 
   loadData: (data: Candle[], symbol?: string) => void;
   setUploading: (uploading: boolean) => void;
@@ -26,7 +26,7 @@ interface BacktestState {
   setCurrentIndex: (index: number) => void;
   rewind: () => void;
   fastForward: () => void;
-  setMode: (mode: 'playback' | 'simulation') => void;
+  setMode: (mode: 'playback' | 'simulation' | 'actual') => void;
   getCurrentTickTime: () => number | null;
   importState: (state: Partial<BacktestState>) => void;
   updateLiveCandle: (kline: Candle) => void;
@@ -46,7 +46,7 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   loadData: (data: Candle[], symbol?: string) => set({ 
     rawData: data, 
     symbol: symbol ?? '',
-    currentIndex: Math.min(100, data.length - 1),
+    currentIndex: get().mode === 'actual' ? data.length - 1 : Math.min(100, data.length - 1),
     isPlaying: false,
     isUploading: false,
     uploadProgress: 0
@@ -91,7 +91,12 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     currentIndex: Math.min(state.currentIndex + 10, state.rawData.length - 1)
   })),
 
-  setMode: (mode: 'playback' | 'simulation') => set({ mode }),
+  setMode: (mode: 'playback' | 'simulation' | 'actual') => set(state => ({
+    mode,
+    currentIndex: mode === 'actual' && state.rawData.length > 0
+      ? state.rawData.length - 1
+      : state.currentIndex
+  })),
 
   getCurrentTickTime: () => {
     const { rawData, currentIndex } = get();

@@ -1,14 +1,41 @@
-import type { MarketSymbol } from '../types';
+export interface ExecutionAccount {
+  id: string;
+  fcmId?: string;
+  ibId?: string;
+  displayName?: string;
+}
+
+export interface ExecutionAccountStatistics {
+  dailyPnL?: number;
+  realizedPnL?: number;
+  unrealizedPnL?: number;
+  openPositions: number;
+  workingOrders: number;
+  updatedAt: number;
+}
+
+export interface ExecutionAccountState {
+  account: ExecutionAccount;
+  balance?: number;
+  equity?: number;
+  buyingPower?: number;
+  marginUsed?: number;
+  realizedPnL?: number;
+  unrealizedPnL?: number;
+  positions: ExecutionPosition[];
+  orders: OrderUpdate[];
+  statistics: ExecutionAccountStatistics;
+  updatedAt: number;
+}
 
 export type OrderSide = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit' | 'stop' | 'stop-limit';
 export type OrderStatus = 'pending' | 'working' | 'partially-filled' | 'filled' | 'cancelled' | 'rejected';
 
-/**
- * Future broker order contract. This is intentionally separate from
- * MarketDataConnection and is not wired to the simulation buttons yet.
- */
+/** Provider-neutral order contract used by actual-account mode. */
 export interface OrderRequest {
+  /** Selected account context, supplied by the account store when needed. */
+  accountId?: string;
   clientOrderId?: string;
   symbol: string;
   side: OrderSide;
@@ -45,6 +72,7 @@ export interface ExecutionPosition {
   quantity: number;
   averagePrice?: number;
   unrealizedPnL?: number;
+  realizedPnL?: number;
 }
 
 export interface ExecutionConnection {
@@ -55,8 +83,12 @@ export interface ExecutionConnection {
   cancelOrder: (orderId: string) => Promise<OrderUpdate>;
   cancelAll: (symbol?: string) => Promise<void>;
   flatten: (symbol?: string) => Promise<void>;
-  listSymbols: () => Promise<MarketSymbol[]>;
-  getPositions: () => Promise<ExecutionPosition[]>;
+  listAccounts: () => Promise<ExecutionAccount[]>;
+  getAccountState: (accountId: string) => Promise<ExecutionAccountState>;
+  subscribeAccountState: (
+    accountId: string,
+    onUpdate: (state: ExecutionAccountState) => void
+  ) => { close: () => void };
   subscribeOrderUpdates: (onUpdate: (update: OrderUpdate) => void) => { close: () => void };
   subscribeFills: (onFill: (fill: ExecutionFill) => void) => { close: () => void };
   close: () => void;

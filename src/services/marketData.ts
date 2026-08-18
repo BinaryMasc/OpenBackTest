@@ -1,4 +1,5 @@
 import type { Candle, MarketSymbol } from '../types';
+import type { ExecutionConnection } from './execution';
 
 export interface MarketDataSubscription {
   close: () => void;
@@ -12,9 +13,9 @@ export interface MarketDataConnectionOptions {
 /**
  * An active connection to a market-data provider.
  *
- * Order routing is deliberately not part of this contract. A future trading
- * adapter can consume the same connection or expose a separate execution
- * interface without making chart data responsible for sending orders.
+ * Order routing is deliberately not part of this contract. A provider that
+ * supports it can expose a separate execution interface through the optional
+ * connection hook without making chart data responsible for sending orders.
  */
 export interface MarketDataConnection {
   readonly sourceId: string;
@@ -27,6 +28,12 @@ export interface MarketDataConnection {
     interval: string,
     onCandle: (candle: Candle) => void
   ) => MarketDataSubscription;
+  /**
+   * Providers that also expose broker execution can share their authenticated
+   * connection with the actual-account mode. Market-data-only providers leave
+   * this undefined.
+   */
+  getExecutionConnection?: () => ExecutionConnection;
   close: () => void;
 }
 

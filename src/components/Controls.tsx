@@ -1,12 +1,13 @@
 import { useRef, useEffect, useState } from 'react';
-import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud, Activity, Zap } from 'lucide-react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud, Activity, Zap, ShieldCheck } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import type { Candle } from '../types';
 import { PlaybackBar } from './PlaybackBar';
 import { TradingPanel } from './TradingPanel';
+import { ActualAccountPanel } from './ActualAccountPanel';
 import { useTradeStore } from '../store/useTradeStore';
-import { RITHMIC_SOURCE_ID, type RithmicCredentials } from '../services/rithmic';
+import { DEFAULT_RITHMIC_GATEWAY_ADDRESS, RITHMIC_SOURCE_ID, type RithmicCredentials } from '../services/rithmic';
 import {
   clearStoredRithmicCredentials,
   loadStoredRithmicCredentials,
@@ -45,7 +46,11 @@ export function Controls() {
   const [isPresetsExpanded, setIsPresetsExpanded] = useState(true);
   const [isSessionExpanded, setIsSessionExpanded] = useState(false);
   const [isRithmicDialogOpen, setIsRithmicDialogOpen] = useState(false);
-  const [rithmicCredentials, setRithmicCredentials] = useState<RithmicCredentials>({ username: '', password: '' });
+  const [rithmicCredentials, setRithmicCredentials] = useState<RithmicCredentials>({
+    username: '',
+    password: '',
+    gatewayUrl: DEFAULT_RITHMIC_GATEWAY_ADDRESS
+  });
   const [rememberRithmicCredentials, setRememberRithmicCredentials] = useState(true);
 
   const isRithmicConnected = sourceId === RITHMIC_SOURCE_ID && isConnected;
@@ -82,7 +87,10 @@ export function Controls() {
     let isMounted = true;
     void loadStoredRithmicCredentials().then(storedCredentials => {
       if (!isMounted || !storedCredentials) return;
-      setRithmicCredentials(storedCredentials);
+      setRithmicCredentials({
+        ...storedCredentials,
+        gatewayUrl: storedCredentials.gatewayUrl || DEFAULT_RITHMIC_GATEWAY_ADDRESS
+      });
       setRememberRithmicCredentials(true);
     });
     return () => {
@@ -278,6 +286,8 @@ export function Controls() {
   const currentDate = currentCandle
     ? new Date(currentCandle.time * 1000).toISOString().replace('T', ' ').substring(0, 19)
     : 'No Data';
+  const isActualMode = mode === 'actual';
+  const showFileDataControls = !isActualMode;
 
   return (
     <div className="flex flex-col h-full bg-dark-800 border-r border-dark-700 w-80 p-6 shadow-xl z-10 text-sm">
@@ -334,6 +344,16 @@ export function Controls() {
               <TrendingUp size={14} />
               Simulation
             </button>
+            <button
+              onClick={() => setMode('actual')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'actual'
+                ? 'bg-amber-600 text-white shadow-lg'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
+            >
+              <ShieldCheck size={14} />
+              Actual
+            </button>
           </div>
         </div>
 
@@ -382,43 +402,60 @@ export function Controls() {
         {
           !(mode === 'simulation' && rawData.length > 0) && (
             <div className="mb-6 space-y-2">
-              <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Data Source</h3>
-              <input
-                type="file"
-                accept=".csv"
-                className="hidden"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="w-full flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
-                {isUploading ? 'Processing...' : 'Load CSV Data'}
-              </button>
+              <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">{isActualMode ? 'Broker Data Source' : 'Data Source'}</h3>
+              {showFileDataControls && (
+                <>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="w-full flex items-center justify-center gap-2 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-lg transition-colors border border-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
+                    {isUploading ? 'Processing...' : 'Load CSV Data'}
+                  </button>
+                </>
+              )}
 
-              <button
-                onClick={isConnected ? disconnectSource : handleDefaultConnect}
-                disabled={isUploading || isMarketDataLoading}
-                className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-                  : 'bg-dark-700 hover:bg-dark-600 text-white border-slate-600/50'
-                  }`}
-              >
-                {isConnected ? (
-                  <>
-                    <Activity size={18} className="animate-pulse" />
-                    Disconnect {sourceName || 'Market Data'}
-                  </>
-                ) : (
-                  <>
-                    <Zap size={18} />
-                    Connect Binance Market Data
-                  </>
-                )}
-              </button>
+              {!isActualMode && (
+                <button
+                  onClick={isConnected ? disconnectSource : handleDefaultConnect}
+                  disabled={isUploading || isMarketDataLoading}
+                  className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'bg-dark-700 hover:bg-dark-600 text-white border-slate-600/50'
+                    }`}
+                >
+                  {isConnected ? (
+                    <>
+                      <Activity size={18} className="animate-pulse" />
+                      Disconnect {sourceName || 'Market Data'}
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={18} />
+                      Connect Binance Market Data
+                    </>
+                  )}
+                </button>
+              )}
+
+              {isActualMode && isConnected && (
+                <button
+                  onClick={disconnectSource}
+                  disabled={isUploading || isMarketDataLoading}
+                  className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Activity size={18} className="animate-pulse" />
+                  Disconnect {sourceName || 'Broker Data'}
+                </button>
+              )}
 
               {!isRithmicConnected && (
                 <button
@@ -431,7 +468,7 @@ export function Controls() {
                 </button>
               )}
 
-              <div className="pt-4">
+              {showFileDataControls && <div className="pt-4">
                 <button
                   onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
                   className="w-full flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-widest mb-3 hover:text-slate-300 transition-colors group"
@@ -461,8 +498,8 @@ export function Controls() {
                     ))}
                   </div>
                 )}
-              </div>
-              {isUploading && (
+              </div>}
+              {showFileDataControls && isUploading && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-400">Processing CSV...</span>
@@ -476,9 +513,9 @@ export function Controls() {
                   </div>
                 </div>
               )}
-              <div className="text-xs text-slate-500 mt-2">
+              {showFileDataControls && <div className="text-xs text-slate-500 mt-2">
                 {!isUploading && (rawData.length > 0 ? `${rawData.length} candles loaded` : 'No data loaded')}
-              </div>
+              </div>}
               {marketDataError && (
                 <div className="text-xs text-red-400 mt-2" role="alert">
                   {marketDataError}
@@ -507,7 +544,7 @@ export function Controls() {
           </div>
         </div> */}
 
-          {!isConnected && (
+          {!isActualMode && !isConnected && (
             <div>
               <label className="block text-slate-300 text-xs mb-1">Playback Speed (ms)</label>
               <input
@@ -532,6 +569,9 @@ export function Controls() {
           {/* Simulation Controls (Conditional) */}
           {mode === 'simulation' && (
             <TradingPanel />
+          )}
+          {mode === 'actual' && (
+            <ActualAccountPanel />
           )}
         </div>
       </div>

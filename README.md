@@ -39,12 +39,13 @@ npm run build
 npm run dev
 ```
 
-### Rithmic market data
+### Rithmic market data and actual account
 
-OpenBackTest includes a read-only Rithmic market-data provider for the Phidias
-paper-trading profile (Rithmic Paper Trading / Chicago Area). It uses a small
-local .NET RAPI+ gateway because browser code cannot load the native RAPI+
-library directly. See [`gateway/README.md`](gateway/README.md) for setup.
+OpenBackTest includes a Rithmic provider for the Phidias paper-trading profile
+(Rithmic Paper Trading / Chicago Area). The Actual Trade mode shows broker
+account statistics and can route market orders, cancel orders, and flatten a
+position through the local .NET RAPI+ gateway. See
+[`gateway/README.md`](gateway/README.md) for setup and live-mode precautions.
 
 Start the gateway, start OpenBackTest, then choose **Connect with Rithmic
 credentials** in the data controls. Credentials are entered in the browser and
@@ -68,4 +69,5 @@ npm run coverage   # Run tests with coverage report
 - [x] Testing: Establish unit testing foundation for stores, hooks, and components.
 - [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies in execution-time.
 - [x] Data: Rithmic market-data adapter through a local RAPI+ gateway.
-- [ ] Trading: Broker execution adapters and live order routing.
+- [x] Trading: Provider-neutral actual-account contract with Rithmic adapter.
+- [ ] Trading: Additional execution adapters (for example, Binance).

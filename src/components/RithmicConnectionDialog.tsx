@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import type { RithmicCredentials } from '../services/rithmic';
+import { DEFAULT_RITHMIC_GATEWAY_ADDRESS, type RithmicCredentials } from '../services/rithmic';
 
 interface RithmicConnectionDialogProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ export function RithmicConnectionDialog({
   isOpen,
   isLoading,
   credentials,
-  // error,
+  error,
   rememberCredentials,
   onCredentialsChange,
   onRememberCredentialsChange,
@@ -54,6 +54,19 @@ export function RithmicConnectionDialog({
           </label>
         </div>
 
+        <label className="mt-3 block text-xs text-slate-300">
+          <span className="mb-1 block">Gateway address</span>
+          <input
+            value={credentials.gatewayUrl || DEFAULT_RITHMIC_GATEWAY_ADDRESS}
+            onChange={event => onCredentialsChange('gatewayUrl', event.target.value)}
+            placeholder={DEFAULT_RITHMIC_GATEWAY_ADDRESS}
+            autoComplete="url"
+            required
+            className="w-full rounded-md border border-slate-700 bg-dark-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          />
+          <span className="mt-1 block text-[11px] text-slate-500">HTTP, HTTPS, WS, and WSS addresses are accepted.</span>
+        </label>
+
         <div className="mt-4 rounded-md border border-slate-700/70 bg-dark-900/60 p-3 text-xs text-slate-300">
           <div className="font-medium text-white">Phidias connection profile</div>
           <div className="mt-1 text-slate-400">Rithmic Paper Trading · Chicago Area · CME</div>
@@ -72,8 +85,8 @@ export function RithmicConnectionDialog({
           </span>
         </label>
 
-        {/* <p className="mt-4 text-[11px] leading-5 text-slate-500">Start <code className="text-slate-300">dotnet run --project gateway</code> first. This integration is market-data only; it never places orders.</p>
-        {error && <div className="mt-3 text-xs text-red-400" role="alert">{error}</div>} */}
+        <p className="mt-4 text-[11px] leading-5 text-slate-500">Start <code className="text-slate-300">dotnet run --project gateway</code> first. In Actual mode, this connection can read account data and route market orders through the local gateway.</p>
+        {error && <div className="mt-3 text-xs text-red-400" role="alert">{error}</div>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-md border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-dark-700">Cancel</button>

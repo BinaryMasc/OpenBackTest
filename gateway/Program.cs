@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections;
 using System.Net;
 using System.Net.WebSockets;
 using System.Reflection;
@@ -6,10 +7,12 @@ using System.Runtime.Loader;
 using System.Text.Json;
 using com.omnesys.rapi;
 
-var rapiDllPath = Environment.GetEnvironmentVariable("RITHMIC_RAPI_DLL");
-if (string.IsNullOrWhiteSpace(rapiDllPath))
-    throw new InvalidOperationException("Set RITHMIC_RAPI_DLL to the RAPI+ rapiplus.dll path.");
-_ = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(rapiDllPath));
+var rapiDllPath = Environment.GetEnvironmentVariable("RITHMIC_RAPI_DLL")
+    ?? Path.Combine(AppContext.BaseDirectory, "rapiplus.dll");
+rapiDllPath = Path.GetFullPath(rapiDllPath);
+if (!File.Exists(rapiDllPath))
+    throw new InvalidOperationException($"RAPI+ rapiplus.dll was not found at {rapiDllPath}. Set RITHMIC_RAPI_DLL to override the bundled runtime.");
+_ = AssemblyLoadContext.Default.LoadFromAssemblyPath(rapiDllPath);
 
 var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 var sessionGate = new SemaphoreSlim(1, 1);
@@ -92,7 +95,9 @@ sealed class RapiConfig
     public string DefaultExchange { get; }
     public RithmicSymbolRequest[] Symbols { get; }
     public string? CertificatePath { get; }
+    public string? TradeRoute { get; }
     public int MaxHistoryMinutes { get; }
+    public int ReplayChunkMinutes { get; }
 
     public RapiConfig()
     {
@@ -114,10 +119,15 @@ sealed class RapiConfig
                 ? "CME.ESU6,CME.MESU6,CME.NQU6,CME.MNQU6,COMEX.GCZ6,COMEX.MGCZ6"
                 : configuredSymbols,
             DefaultExchange);
-        CertificatePath = Environment.GetEnvironmentVariable("RITHMIC_CA_FILE");
+        CertificatePath = Environment.GetEnvironmentVariable("RITHMIC_CA_FILE")
+            ?? Path.Combine(AppContext.BaseDirectory, "rithmic_ssl_cert_auth_params");
+        TradeRoute = Environment.GetEnvironmentVariable("RITHMIC_TRADE_ROUTE");
         MaxHistoryMinutes = int.TryParse(Environment.GetEnvironmentVariable("RITHMIC_MAX_HISTORY_MINUTES"), out var minutes)
             ? Math.Clamp(minutes, 1, 10_000)
-            : 2_000;
+            : 10_000;
+        ReplayChunkMinutes = int.TryParse(Environment.GetEnvironmentVariable("RITHMIC_REPLAY_CHUNK_MINUTES"), out var chunkMinutes)
+            ? Math.Clamp(chunkMinutes, 1, 2_000)
+            : 1_440;
     }
 
     private static string FindProfile()
@@ -183,10 +193,16 @@ static class CallbackRelay
 sealed class GatewayCallbacks : RCallbacks
 {
     public override void Alert(AlertInfo info) => CallbackRelay.Dispatch(nameof(Alert), info);
+    public override void AccountList(AccountListInfo info) => CallbackRelay.Dispatch(nameof(AccountList), info);
     public override void ExchangeList(ExchangeListInfo info) => CallbackRelay.Dispatch(nameof(ExchangeList), info);
+    public override void FillReport(OrderFillReport report) => CallbackRelay.Dispatch(nameof(FillReport), report);
+    public override void LineUpdate(LineInfo info) => CallbackRelay.Dispatch(nameof(LineUpdate), info);
+    public override void PnlUpdate(PnlInfo info) => CallbackRelay.Dispatch(nameof(PnlUpdate), info);
+    public override void PnlReplay(PnlReplayInfo info) => CallbackRelay.Dispatch(nameof(PnlReplay), info);
     public override void RefData(RefDataInfo info) => CallbackRelay.Dispatch(nameof(RefData), info);
     public override void TradePrint(TradeInfo info) => CallbackRelay.Dispatch(nameof(TradePrint), info);
     public override void TradeReplay(TradeReplayInfo info) => CallbackRelay.Dispatch(nameof(TradeReplay), info);
+    public override void TradeRouteList(TradeRouteListInfo info) => CallbackRelay.Dispatch(nameof(TradeRouteList), info);
 }
 
 sealed class CandleBuffer
@@ -247,6 +263,64 @@ sealed class Candle
     public Candle Copy() => new() { Time = Time, Open = Open, High = High, Low = Low, Close = Close, Volume = Volume, Symbol = Symbol };
 }
 
+sealed class GatewayAccount
+{
+    public string Id { get; init; } = string.Empty;
+    public string? FcmId { get; init; }
+    public string? IbId { get; init; }
+    public string? DisplayName { get; init; }
+}
+
+sealed class GatewayPosition
+{
+    public string Symbol { get; init; } = string.Empty;
+    public string Side { get; init; } = "flat";
+    public double Quantity { get; init; }
+    public double? AveragePrice { get; init; }
+    public double? UnrealizedPnL { get; init; }
+    public double? RealizedPnL { get; init; }
+}
+
+sealed class GatewayOrder
+{
+    public string OrderId { get; init; } = string.Empty;
+    public string Symbol { get; init; } = string.Empty;
+    public string Side { get; init; } = "buy";
+    public double Quantity { get; init; }
+    public string OrderType { get; init; } = "market";
+    public string Status { get; set; } = "working";
+    public double FilledQuantity { get; set; }
+    public double? AverageFillPrice { get; set; }
+    public double? LimitPrice { get; set; }
+    public string? RejectReason { get; set; }
+    public string? ClientOrderId { get; set; }
+}
+
+sealed class GatewayStatistics
+{
+    public double? DailyPnL { get; set; }
+    public double? RealizedPnL { get; set; }
+    public double? UnrealizedPnL { get; set; }
+    public int OpenPositions { get; set; }
+    public int WorkingOrders { get; set; }
+    public long UpdatedAt { get; set; }
+}
+
+sealed class GatewayAccountState
+{
+    public GatewayAccount Account { get; init; } = new();
+    public double? Balance { get; set; }
+    public double? Equity { get; set; }
+    public double? BuyingPower { get; set; }
+    public double? MarginUsed { get; set; }
+    public double? RealizedPnL { get; set; }
+    public double? UnrealizedPnL { get; set; }
+    public List<GatewayPosition> Positions { get; } = new();
+    public List<GatewayOrder> Orders { get; } = new();
+    public GatewayStatistics Statistics { get; } = new();
+    public long UpdatedAt { get; set; }
+}
+
 sealed class RapiSession
 {
     private readonly WebSocket browser;
@@ -264,6 +338,18 @@ sealed class RapiSession
     private RCallbacks? callbacks;
     private TaskCompletionSource<object?>? referenceDataWaiter;
     private TaskCompletionSource<object?>? replayWaiter;
+    private TaskCompletionSource<object?>? accountListWaiter;
+    private TaskCompletionSource<object?>? tradeRouteWaiter;
+    private readonly Dictionary<string, TaskCompletionSource<object?>> pnlWaiters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TaskCompletionSource<object?>> orderWaiters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, double> pendingOrderQuantities = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, object> accountHandles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, GatewayAccount> accounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, GatewayAccountState> accountStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> tradeRoutes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> accountSubscriptions = new(StringComparer.OrdinalIgnoreCase);
+    private bool tradeRoutesLoaded;
+    private string? activeAccountId;
     private bool closed;
 
     public RapiSession(WebSocket browser, JsonSerializerOptions serializerOptions)
@@ -318,7 +404,12 @@ sealed class RapiSession
     {
         assembly = typeof(RCallbacks).Assembly;
         if (!string.IsNullOrWhiteSpace(config.CertificatePath))
-            Environment.SetEnvironmentVariable("MML_SSL_CLNT_AUTH_FILE", Path.GetFullPath(config.CertificatePath));
+        {
+            var certificatePath = Path.GetFullPath(config.CertificatePath);
+            if (!File.Exists(certificatePath))
+                throw new InvalidOperationException($"Rithmic certificate file was not found at {certificatePath}. Set RITHMIC_CA_FILE to override the bundled certificate.");
+            Environment.SetEnvironmentVariable("MML_SSL_CLNT_AUTH_FILE", certificatePath);
+        }
 
         var parameters = Create(assembly, "com.omnesys.rapi.REngineParams");
         Set(parameters, "AppName", "OpenBackTest");
@@ -414,9 +505,184 @@ sealed class RapiSession
                     candles = candleBuffer.Get(Qualify(historySymbol.Symbol, historySymbol.Exchange), limit)
                 });
                 break;
+            case "accounts":
+                await SendAsync(new { type = "accounts", requestId, accounts = await ResolveAccountsAsync() });
+                break;
+            case "accountState":
+                var accountId = ReadString(message, "accountId") ?? throw new InvalidOperationException("An accountId is required.");
+                var accountState = await LoadAccountStateAsync(accountId);
+                await SendAsync(new { type = "accountState", requestId, state = accountState });
+                break;
+            case "accountSubscribe":
+                var subscribeAccountId = ReadString(message, "accountId") ?? throw new InvalidOperationException("An accountId is required.");
+                await LoadAccountStateAsync(subscribeAccountId);
+                accountSubscriptions.Add(subscribeAccountId);
+                await SendAsync(new { type = "accountState", state = accountStates[subscribeAccountId] });
+                break;
+            case "accountUnsubscribe":
+                var unsubscribeAccountId = ReadString(message, "accountId");
+                if (!string.IsNullOrWhiteSpace(unsubscribeAccountId)) accountSubscriptions.Remove(unsubscribeAccountId);
+                break;
+            case "tradeRoutes":
+                await LoadTradeRoutesAsync();
+                await SendAsync(new { type = "tradeRoutes", requestId, routes = tradeRoutes });
+                break;
+            case "order":
+                var order = await PlaceOrderAsync(message);
+                await SendAsync(new { type = "orderUpdate", requestId, update = order });
+                break;
+            case "cancelOrder":
+                var cancelled = await CancelOrderAsync(ReadString(message, "orderId"));
+                await SendAsync(new { type = "orderUpdate", requestId, update = cancelled });
+                break;
+            case "cancelAll":
+                await CancelAllOrdersAsync(ReadString(message, "symbol"));
+                await SendAsync(new { type = "cancelAll", requestId });
+                break;
+            case "flatten":
+                await FlattenAsync(ReadString(message, "symbol"));
+                await SendAsync(new { type = "flatten", requestId });
+                break;
             default:
                 throw new InvalidOperationException($"Unknown Rithmic gateway message: {type}");
         }
+    }
+
+    private async Task<List<GatewayAccount>> ResolveAccountsAsync()
+    {
+        if (accounts.Count > 0) return accounts.Values.ToList();
+
+        var waiter = NewWaiter();
+        accountListWaiter = waiter;
+        try
+        {
+            Invoke(engine!, "getAccounts", "A");
+            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            var responseCode = ReadInt(info, "RpCode");
+            if (responseCode != 0)
+                throw new InvalidOperationException($"Rithmic account lookup rejected (code {responseCode}).");
+
+            var rawAccounts = Property(info, "Accounts") as IEnumerable
+                ?? Property(info, "asAccountInfoArray") as IEnumerable;
+            if (rawAccounts is not null)
+            {
+                foreach (var rawAccount in rawAccounts.Cast<object>())
+                {
+                    var account = ToGatewayAccount(rawAccount);
+                    if (string.IsNullOrWhiteSpace(account.Id)) continue;
+                    accounts[account.Id] = account;
+                    accountHandles[account.Id] = rawAccount;
+                }
+            }
+            if (accounts.Count == 0) throw new InvalidOperationException("Rithmic returned no trading accounts.");
+            return accounts.Values.ToList();
+        }
+        finally
+        {
+            accountListWaiter = null;
+        }
+    }
+
+    private async Task LoadTradeRoutesAsync()
+    {
+        if (tradeRoutesLoaded || !string.IsNullOrWhiteSpace(config.TradeRoute))
+        {
+            tradeRoutesLoaded = true;
+            return;
+        }
+
+        var waiter = NewWaiter();
+        tradeRouteWaiter = waiter;
+        try
+        {
+            Invoke(engine!, "listTradeRoutes", new object());
+            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            var responseCode = ReadInt(info, "RpCode");
+            if (responseCode != 0)
+                throw new InvalidOperationException($"Rithmic trade-route lookup rejected (code {responseCode}).");
+
+            var rawRoutes = Property(info, "TradeRoutes") as IEnumerable;
+            if (rawRoutes is not null)
+            {
+                foreach (var rawRoute in rawRoutes.Cast<object>())
+                {
+                    var route = ReadString(rawRoute, "TradeRoute");
+                    if (string.IsNullOrWhiteSpace(route)) continue;
+                    var exchange = ReadString(rawRoute, "Exchange") ?? "*";
+                    var isDefault = IsTruthy(ReadString(rawRoute, "Default"));
+                    if (!tradeRoutes.ContainsKey(exchange) || isDefault)
+                        tradeRoutes[exchange] = route;
+                }
+            }
+
+            tradeRoutesLoaded = true;
+            Console.WriteLine($"RAPI+ trade routes loaded: {string.Join(", ", tradeRoutes.Select(item => $"{item.Key}={item.Value}"))}");
+        }
+        finally
+        {
+            tradeRouteWaiter = null;
+        }
+    }
+
+    private async Task<string> ResolveTradeRouteAsync(string exchange)
+    {
+        if (!string.IsNullOrWhiteSpace(config.TradeRoute)) return config.TradeRoute;
+        await LoadTradeRoutesAsync();
+        if (tradeRoutes.TryGetValue(exchange, out var route)) return route;
+        if (tradeRoutes.TryGetValue("*", out route)) return route;
+        if (tradeRoutes.Count == 1) return tradeRoutes.Values.Single();
+        throw new InvalidOperationException($"No Rithmic trade route is available for {exchange}. Set RITHMIC_TRADE_ROUTE or confirm the account has an enabled route.");
+    }
+
+    private GatewayAccount ToGatewayAccount(object rawAccount)
+    {
+        var accountId = ReadString(rawAccount, "sAccountId") ?? ReadString(rawAccount, "AccountId") ?? string.Empty;
+        var fcmId = ReadString(rawAccount, "sFcmId") ?? ReadString(rawAccount, "FcmId");
+        var ibId = ReadString(rawAccount, "sIbId") ?? ReadString(rawAccount, "IbId");
+        return new GatewayAccount
+        {
+            Id = accountId,
+            FcmId = fcmId,
+            IbId = ibId,
+            DisplayName = string.IsNullOrWhiteSpace(fcmId) ? accountId : $"{accountId} · {fcmId}"
+        };
+    }
+
+    private async Task<GatewayAccountState> LoadAccountStateAsync(string accountId)
+    {
+        await ResolveAccountsAsync();
+        if (!accountHandles.TryGetValue(accountId, out var rawAccount) || !accounts.TryGetValue(accountId, out var account))
+            throw new InvalidOperationException($"Unknown Rithmic trading account: {accountId}");
+
+        activeAccountId = accountId;
+        if (!accountStates.TryGetValue(accountId, out var state))
+        {
+            state = new GatewayAccountState { Account = account };
+            accountStates[accountId] = state;
+        }
+
+        EnsureAccountFeeds(rawAccount, accountId);
+        var waiter = NewWaiter();
+        pnlWaiters[accountId] = waiter;
+        try
+        {
+            Invoke(engine!, "replayPnl", rawAccount, new object());
+            try { await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
+            catch (TimeoutException) { }
+        }
+        finally
+        {
+            pnlWaiters.Remove(accountId);
+        }
+        state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return state;
+    }
+
+    private void EnsureAccountFeeds(object rawAccount, string accountId)
+    {
+        if (accountStates.ContainsKey(accountId) && accountStates[accountId].UpdatedAt > 0) return;
+        Invoke(engine!, "subscribePnl", rawAccount);
+        Invoke(engine!, "subscribeOrder", rawAccount);
     }
 
     private void EnsureSubscribed(string exchange, string symbol)
@@ -431,17 +697,33 @@ sealed class RapiSession
 
     private async Task ReplayHistoryAsync(string exchange, string symbol, int limit)
     {
+        var end = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var remaining = limit;
+        while (remaining > 0)
+        {
+            var chunk = Math.Min(remaining, config.ReplayChunkMinutes);
+            var hasMoreHistory = await ReplayHistoryWindowAsync(exchange, symbol, end - (chunk * 60), end);
+            if (!hasMoreHistory) break;
+            end -= chunk * 60;
+            remaining -= chunk;
+        }
+    }
+
+    private async Task<bool> ReplayHistoryWindowAsync(string exchange, string symbol, int start, int end)
+    {
         var waiter = NewWaiter();
         replayWaiter = waiter;
         try
         {
-            var end = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var start = end - (limit * 60);
             Invoke(engine!, "replayTrades", exchange, symbol, start, end, new object());
             var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(90));
             var responseCode = ReadInt(info, "RpCode");
+            // Rithmic uses code 7 when a replay window has no older data. This
+            // is a normal end-of-history condition, not a failed chart load.
+            if (responseCode == 7) return false;
             if (responseCode != 0)
                 throw new InvalidOperationException($"Rithmic trade replay rejected {exchange}.{symbol} (code {responseCode}).");
+            return true;
         }
         finally
         {
@@ -454,8 +736,26 @@ sealed class RapiSession
         if (info is null) return;
         switch (eventName)
         {
+            case "AccountList":
+                accountListWaiter?.TrySetResult(info);
+                break;
+            case "TradeRouteList":
+                tradeRouteWaiter?.TrySetResult(info);
+                break;
             case "RefData":
                 referenceDataWaiter?.TrySetResult(info);
+                break;
+            case "PnlUpdate":
+                ProcessPnl(info);
+                break;
+            case "PnlReplay":
+                ProcessPnlReplay(info);
+                break;
+            case "LineUpdate":
+                ProcessLineUpdate(info);
+                break;
+            case "FillReport":
+                ProcessFillReport(info);
                 break;
             case "TradeReplay":
                 replayWaiter?.TrySetResult(info);
@@ -468,6 +768,359 @@ sealed class RapiSession
                 if (!string.IsNullOrWhiteSpace(text)) Console.Error.WriteLine($"RAPI+ alert: {text}");
                 break;
         }
+    }
+
+    private void ProcessPnlReplay(object info)
+    {
+        var array = Property(info, "PnlInfoList") as IEnumerable
+            ?? Property(info, "asPnlInfoArray") as IEnumerable
+            ?? Property(info, "asPnlArray") as IEnumerable;
+        if (array is not null)
+        {
+            foreach (var item in array.Cast<object>()) ProcessPnl(item);
+        }
+        else
+        {
+            ProcessPnl(info);
+        }
+
+        var accountId = ReadString(Property(info, "Account"), "AccountId")
+            ?? ReadString(Property(info, "oAccount"), "sAccountId")
+            ?? activeAccountId;
+        if (accountId is not null && pnlWaiters.TryGetValue(accountId, out var waiter)) waiter.TrySetResult(info);
+    }
+
+    private void ProcessPnl(object info)
+    {
+        var rawAccount = Property(info, "Account") ?? Property(info, "oAccount");
+        var accountId = ReadString(rawAccount, "AccountId")
+            ?? ReadString(rawAccount, "sAccountId")
+            ?? ReadString(info, "AccountId")
+            ?? ReadString(info, "sAccountId")
+            ?? activeAccountId;
+        if (string.IsNullOrWhiteSpace(accountId) || !accounts.TryGetValue(accountId, out var account)) return;
+
+        if (!accountStates.TryGetValue(accountId, out var state))
+        {
+            state = new GatewayAccountState { Account = account };
+            accountStates[accountId] = state;
+        }
+
+        state.Balance = FirstDouble(info, "AccountBalance", "CashOnHand", "Balance", "StartingBalance") ?? state.Balance;
+        var openPnl = FirstDouble(info, "OpenPnl", "UnrealizedPnl", "UnrealizedPnL");
+        state.Equity = state.Balance.HasValue && openPnl.HasValue ? state.Balance.Value + openPnl.Value : state.Equity;
+        state.BuyingPower = FirstDouble(info, "AvailableBuyingPower", "BuyingPower", "ExcessLiquidity", "AvailableFunds") ?? state.BuyingPower;
+        state.MarginUsed = FirstDouble(info, "ReservedMargin", "Margin", "MarginUsed", "InitialMargin") ?? state.MarginUsed;
+        state.RealizedPnL = FirstDouble(info, "ClosedPnl", "RealizedPnl", "RealizedPnL", "DailyPnl") ?? state.RealizedPnL;
+        state.UnrealizedPnL = openPnl ?? state.UnrealizedPnL;
+
+        var ticker = ReadString(info, "Symbol") ?? ReadString(info, "Ticker");
+        var exchange = ReadString(info, "Exchange");
+        var quantity = FirstDouble(info, "Position", "OpenPosition", "Quantity", "OpenQuantity") ?? 0;
+        if (!string.IsNullOrWhiteSpace(ticker))
+        {
+            var symbol = string.IsNullOrWhiteSpace(exchange) ? ticker : $"{ticker}.{exchange}";
+            var existing = state.Positions.FindIndex(position => position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase));
+            if (Math.Abs(quantity) <= 0)
+            {
+                if (existing >= 0) state.Positions.RemoveAt(existing);
+            }
+            else
+            {
+                var position = new GatewayPosition
+                {
+                    Symbol = symbol,
+                    Side = quantity > 0 ? "long" : "short",
+                    Quantity = Math.Abs(quantity),
+                    AveragePrice = FirstDouble(info, "AvgOpenFillPrice", "AverageOpenPrice", "AveragePrice", "OpenPrice"),
+                    UnrealizedPnL = openPnl,
+                    RealizedPnL = FirstDouble(info, "ClosedPnl", "RealizedPnl", "RealizedPnL")
+                };
+                if (existing >= 0) state.Positions[existing] = position;
+                else state.Positions.Add(position);
+            }
+        }
+
+        state.Statistics.DailyPnL = FirstDouble(info, "ClosedPnl", "DailyPnl", "RealizedPnl") ?? state.Statistics.DailyPnL;
+        state.Statistics.RealizedPnL = state.RealizedPnL;
+        state.Statistics.UnrealizedPnL = state.UnrealizedPnL;
+        var workingQuantity = (FirstDouble(info, "BuyWorkingQty") ?? 0) + (FirstDouble(info, "SellWorkingQty") ?? 0);
+        state.Statistics.WorkingOrders = workingQuantity > 0 ? Math.Max(1, state.Statistics.WorkingOrders) : state.Statistics.WorkingOrders;
+        state.Statistics.OpenPositions = state.Positions.Count;
+        state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        if (accountSubscriptions.Contains(accountId))
+            _ = SendAsync(new { type = "accountState", state });
+    }
+
+    private void ProcessLineUpdate(object info)
+    {
+        var rawAccount = Property(info, "Account") ?? Property(info, "oAccount");
+        var accountId = ReadString(rawAccount, "AccountId")
+            ?? ReadString(rawAccount, "sAccountId")
+            ?? activeAccountId;
+        if (string.IsNullOrWhiteSpace(accountId) || !accounts.ContainsKey(accountId)) return;
+
+        var orderId = ReadString(info, "OrderNum") ?? ReadString(info, "OrderNumber");
+        var symbol = ReadString(info, "Symbol") ?? ReadString(info, "Ticker") ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(symbol)) return;
+
+        var rawStatus = ReadString(info, "Status") ?? string.Empty;
+        var completion = ReadString(info, "CompletionReason") ?? string.Empty;
+        var isCancelled = rawStatus.Contains("cancel", StringComparison.OrdinalIgnoreCase) || completion.Contains("cancel", StringComparison.OrdinalIgnoreCase) || completion.Equals("C", StringComparison.OrdinalIgnoreCase);
+        var isRejected = rawStatus.Contains("reject", StringComparison.OrdinalIgnoreCase) || completion.Contains("reject", StringComparison.OrdinalIgnoreCase) || completion.Equals("R", StringComparison.OrdinalIgnoreCase);
+        var isFilled = (rawStatus.Contains("complete", StringComparison.OrdinalIgnoreCase) && completion.Contains("fill", StringComparison.OrdinalIgnoreCase)) || completion.Equals("F", StringComparison.OrdinalIgnoreCase);
+        var status = isCancelled
+            ? "cancelled"
+            : isRejected
+                ? "rejected"
+                : isFilled
+                    ? "filled"
+                    : "working";
+        var side = (ReadString(info, "BuySellType") ?? "B").Equals("S", StringComparison.OrdinalIgnoreCase) ? "sell" : "buy";
+        var filledQuantity = FirstDouble(info, "Filled", "TotalFilled") ?? 0;
+        var quantityToFill = FirstDouble(info, "QuantityToFill");
+        var clientOrderId = ReadString(info, "UserMsg");
+        if (string.IsNullOrWhiteSpace(clientOrderId))
+        {
+            var tag = ReadString(info, "Tag");
+            clientOrderId = tag?.StartsWith("openbacktest-", StringComparison.OrdinalIgnoreCase) == true ? tag : null;
+        }
+        var quantity = FirstDouble(info, "Quantity", "MaxShowQty")
+            ?? (quantityToFill.HasValue ? Math.Max(quantityToFill.Value + filledQuantity, filledQuantity) : 0);
+        if (quantity <= 0 && clientOrderId is not null && pendingOrderQuantities.TryGetValue(clientOrderId, out var requestedQuantity))
+            quantity = requestedQuantity;
+        if (!isCancelled && !isRejected && !isFilled && filledQuantity > 0 && quantity > filledQuantity)
+            status = "partially-filled";
+        var exchange = ReadString(info, "Exchange");
+        var rejectReason = isRejected ? ReadString(info, "Text") ?? ReadString(info, "Remarks") : null;
+        var rawOrderType = ReadString(info, "OrderType") ?? "M";
+        var orderType = rawOrderType.Equals("L", StringComparison.OrdinalIgnoreCase)
+            || rawOrderType.Contains("limit", StringComparison.OrdinalIgnoreCase)
+            ? "limit"
+            : "market";
+        var limitPrice = orderType == "limit" ? FirstDouble(info, "PriceToFill", "Price") : null;
+        var state = accountStates.TryGetValue(accountId, out var existing)
+            ? existing
+            : new GatewayAccountState { Account = accounts[accountId] };
+        accountStates[accountId] = state;
+        var order = new GatewayOrder
+        {
+            OrderId = orderId,
+            Symbol = string.IsNullOrWhiteSpace(ReadString(info, "Exchange")) ? symbol : $"{symbol}.{ReadString(info, "Exchange")}",
+            Side = side,
+            Quantity = quantity,
+            OrderType = orderType,
+            Status = status,
+            FilledQuantity = filledQuantity,
+            AverageFillPrice = FirstDouble(info, "AvgFillPrice", "AverageFillPrice"),
+            LimitPrice = limitPrice,
+            RejectReason = rejectReason,
+            ClientOrderId = clientOrderId
+        };
+        var existingOrder = state.Orders.FindIndex(item => item.OrderId.Equals(orderId, StringComparison.OrdinalIgnoreCase));
+        if (existingOrder >= 0) state.Orders[existingOrder] = order;
+        else state.Orders.Add(order);
+        state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
+        state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        Console.WriteLine($"RAPI+ line {orderId} {order.Status} {side} {quantity:0.####}/{filledQuantity:0.####} {order.Symbol}{(string.IsNullOrWhiteSpace(rejectReason) ? string.Empty : $" reason={rejectReason}")}");
+
+        _ = SendAsync(new
+        {
+            type = "orderUpdate",
+            update = new
+            {
+                orderId,
+                accountId,
+                symbol = string.IsNullOrWhiteSpace(exchange) ? symbol : $"{symbol}.{exchange}",
+                side,
+                quantity,
+                orderType,
+                limitPrice,
+                status,
+                filledQuantity,
+                averageFillPrice = order.AverageFillPrice,
+                rejectReason,
+                clientOrderId
+            }
+        });
+        if (clientOrderId is not null && orderWaiters.TryGetValue(clientOrderId, out var waiter))
+        {
+            waiter.TrySetResult(new
+            {
+                orderId,
+                accountId,
+                symbol = order.Symbol,
+                side,
+                quantity,
+                orderType,
+                limitPrice,
+                status,
+                filledQuantity,
+                averageFillPrice = order.AverageFillPrice,
+                rejectReason,
+                clientOrderId
+            });
+        }
+        if (accountSubscriptions.Contains(accountId)) _ = SendAsync(new { type = "accountState", state });
+    }
+
+    private void ProcessFillReport(object info)
+    {
+        var rawAccount = Property(info, "Account") ?? Property(info, "oAccount");
+        var accountId = ReadString(rawAccount, "AccountId")
+            ?? ReadString(rawAccount, "sAccountId")
+            ?? activeAccountId;
+        var orderId = ReadString(info, "OrderNum") ?? ReadString(info, "OrderNumber");
+        var symbol = ReadString(info, "Symbol") ?? ReadString(info, "Ticker");
+        var quantity = FirstDouble(info, "FillSize", "Quantity") ?? 0;
+        var price = FirstDouble(info, "FillPrice", "AverageFillPrice") ?? 0;
+        if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(symbol) || quantity <= 0 || price <= 0) return;
+
+        var side = (ReadString(info, "BuySellType") ?? ReadString(info, "FillSide") ?? "B").Equals("S", StringComparison.OrdinalIgnoreCase) ? "sell" : "buy";
+        _ = SendAsync(new
+        {
+            type = "fill",
+            fill = new
+            {
+                orderId,
+                accountId,
+                symbol,
+                side,
+                quantity,
+                price,
+                time = ReadLong(info, "Ssboe")
+            }
+        });
+    }
+
+    private async Task<object> PlaceOrderAsync(JsonElement message)
+    {
+        var order = message.GetProperty("order");
+        var accountId = ReadString(order, "accountId") ?? activeAccountId
+            ?? throw new InvalidOperationException("Select a trading account before placing an order.");
+        await ResolveAccountsAsync();
+        if (!accountHandles.TryGetValue(accountId, out var rawAccount))
+            throw new InvalidOperationException($"Unknown Rithmic trading account: {accountId}");
+
+        var symbol = ReadString(order, "symbol") ?? throw new InvalidOperationException("An order symbol is required.");
+        var parsed = ParseSymbol(symbol);
+        var quantity = ReadDouble(order, "quantity");
+        if (quantity <= 0) throw new InvalidOperationException("Order quantity must be greater than zero.");
+        var roundedQuantity = Math.Round(quantity);
+        if (Math.Abs(quantity - roundedQuantity) > 0.000001)
+            throw new InvalidOperationException("Rithmic futures order quantity must be a whole number of contracts.");
+        var side = (ReadString(order, "side") ?? "buy").Equals("sell", StringComparison.OrdinalIgnoreCase) ? "S" : "B";
+        var orderType = (ReadString(order, "orderType") ?? "market").ToLowerInvariant();
+        if (orderType is not ("market" or "limit"))
+            throw new InvalidOperationException("Rithmic live mode currently supports market and limit orders only.");
+        var limitPrice = orderType == "limit" ? ReadDouble(order, "limitPrice") : 0;
+        if (orderType == "limit" && limitPrice <= 0)
+            throw new InvalidOperationException("A positive limitPrice is required for a Rithmic limit order.");
+        var clientOrderId = ReadString(order, "clientOrderId") ?? $"openbacktest-{Guid.NewGuid():N}";
+        var tradeRoute = await ResolveTradeRouteAsync(parsed.Exchange);
+
+        var paramsType = assembly!.GetType(orderType == "limit" ? "com.omnesys.rapi.LimitOrderParams" : "com.omnesys.rapi.MarketOrderParams", throwOnError: true)!;
+        var parameters = Activator.CreateInstance(paramsType)
+            ?? throw new InvalidOperationException("Could not create Rithmic market-order parameters.");
+        SetAny(parameters, "Account", rawAccount);
+        SetAny(parameters, "Exchange", parsed.Exchange);
+        SetAny(parameters, "Symbol", parsed.Symbol);
+        SetAny(parameters, "TradeRoute", tradeRoute);
+        SetAny(parameters, "BuySellType", side);
+        SetAny(parameters, "Qty", Convert.ToInt64(roundedQuantity));
+        if (orderType == "limit") SetAny(parameters, "Price", limitPrice);
+        SetAny(parameters, "Duration", "DAY");
+        SetAny(parameters, "EntryType", orderType == "limit" ? "L" : "M");
+        SetAny(parameters, "Tag", "OpenBackTest");
+        SetAny(parameters, "TradingAlgorithm", "OpenBackTest");
+        SetAny(parameters, "UserMsg", clientOrderId);
+
+        var fallbackUpdate = new
+        {
+            orderId = ReadString(parameters, "OrderNum") ?? ReadString(parameters, "OrderNumber") ?? $"rithmic-{Guid.NewGuid():N}",
+            accountId,
+            symbol,
+            side = side == "B" ? "buy" : "sell",
+            quantity,
+            orderType,
+            limitPrice = orderType == "limit" ? limitPrice : (double?)null,
+            status = "working",
+            filledQuantity = 0,
+            clientOrderId,
+            tradeRoute
+        };
+
+        var waiter = NewWaiter();
+        orderWaiters[clientOrderId] = waiter;
+        pendingOrderQuantities[clientOrderId] = quantity;
+        try
+        {
+            Console.WriteLine($"RAPI+ send {side} {orderType} {quantity:0.####} {parsed.Symbol}.{parsed.Exchange}{(orderType == "limit" ? $" @ {limitPrice:0.########}" : string.Empty)} route={tradeRoute} account={accountId} client={clientOrderId}");
+            Invoke(engine!, "sendOrder", parameters);
+            try
+            {
+                var update = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                if (update is not null) return update;
+            }
+            catch (TimeoutException)
+            {
+                Console.Error.WriteLine($"RAPI+ order acknowledgement timed out for {clientOrderId}; continuing to stream line updates.");
+            }
+            return fallbackUpdate;
+        }
+        finally
+        {
+            orderWaiters.Remove(clientOrderId);
+            pendingOrderQuantities.Remove(clientOrderId);
+        }
+    }
+
+    private async Task<object> CancelOrderAsync(string? orderId)
+    {
+        if (string.IsNullOrWhiteSpace(orderId)) throw new InvalidOperationException("An orderId is required.");
+        await ResolveAccountsAsync();
+        if (activeAccountId is null || !accountHandles.TryGetValue(activeAccountId, out var rawAccount))
+            throw new InvalidOperationException("Select a trading account before cancelling an order.");
+        Invoke(engine!, "cancelOrder", rawAccount, orderId, "M", "OpenBackTest", "", "OpenBackTest", new object());
+        var existing = accountStates.TryGetValue(activeAccountId, out var state)
+            ? state.Orders.FirstOrDefault(item => item.OrderId.Equals(orderId, StringComparison.OrdinalIgnoreCase))
+            : null;
+        return new
+        {
+            orderId,
+            accountId = activeAccountId,
+            symbol = existing?.Symbol ?? string.Empty,
+            side = existing?.Side ?? "buy",
+            quantity = existing?.Quantity ?? 0,
+            orderType = existing?.OrderType ?? "market",
+            limitPrice = existing?.LimitPrice,
+            status = "cancelled",
+            filledQuantity = existing?.FilledQuantity ?? 0,
+            averageFillPrice = existing?.AverageFillPrice
+        };
+    }
+
+    private async Task CancelAllOrdersAsync(string? symbol)
+    {
+        await ResolveAccountsAsync();
+        if (activeAccountId is null || !accountHandles.TryGetValue(activeAccountId, out var rawAccount))
+            throw new InvalidOperationException("Select a trading account before cancelling orders.");
+        Invoke(engine!, "cancelAllOrders", rawAccount, "M", "OpenBackTest", "OpenBackTest");
+    }
+
+    private async Task FlattenAsync(string? symbol)
+    {
+        await ResolveAccountsAsync();
+        if (activeAccountId is null || !accountHandles.TryGetValue(activeAccountId, out var rawAccount))
+            throw new InvalidOperationException("Select a trading account before flattening a position.");
+        if (string.IsNullOrWhiteSpace(symbol)) throw new InvalidOperationException("A symbol is required to flatten.");
+        var parsed = ParseSymbol(symbol);
+        // Cancel first so a working opening order cannot re-enter the position
+        // while the broker is processing the flatten request.
+        Invoke(engine!, "cancelAllOrders", rawAccount, "M", "OpenBackTest", "OpenBackTest");
+        await Task.Delay(250);
+        Invoke(engine!, "exitPosition", rawAccount, parsed.Exchange, parsed.Symbol, "M", "OpenBackTest", "OpenBackTest", "", "OpenBackTest", new object());
     }
 
     private void ProcessTrade(object info)
@@ -510,6 +1163,11 @@ sealed class RapiSession
                 var parsed = ParseSymbol(qualified);
                 Invoke(engine!, "unsubscribe", parsed.Exchange, parsed.Symbol);
             }
+            foreach (var rawAccount in accountHandles.Values)
+            {
+                try { Invoke(engine!, "unsubscribePnl", rawAccount); } catch { }
+                try { Invoke(engine!, "unsubscribeOrder", rawAccount); } catch { }
+            }
             if (engine is not null)
             {
                 Invoke(engine, "logout");
@@ -524,6 +1182,10 @@ sealed class RapiSession
         finally
         {
             CallbackRelay.Clear();
+            accountSubscriptions.Clear();
+            foreach (var waiter in orderWaiters.Values) waiter.TrySetResult(null);
+            orderWaiters.Clear();
+            pendingOrderQuantities.Clear();
             if (browser.State == WebSocketState.Open)
             {
                 try { await browser.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", CancellationToken.None); }
@@ -584,12 +1246,40 @@ sealed class RapiSession
         propertyInfo.SetValue(target, value);
     }
 
+    private static void SetAny(object target, string property, object value)
+    {
+        var propertyInfo = target.GetType().GetProperty(property, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (propertyInfo is null || !propertyInfo.CanWrite) return;
+        if (propertyInfo.PropertyType.IsInstanceOfType(value))
+        {
+            propertyInfo.SetValue(target, value);
+            return;
+        }
+        try
+        {
+            propertyInfo.SetValue(target, Convert.ChangeType(value, Nullable.GetUnderlyingType(propertyInfo.PropertyType) ?? propertyInfo.PropertyType, CultureInfo.InvariantCulture));
+        }
+        catch (InvalidCastException) { }
+        catch (FormatException) { }
+        catch (ArgumentException) { }
+    }
+
     private static object? Invoke(object target, string method, params object?[] arguments)
     {
-        var methodInfo = target.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        var candidates = target.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .Where(candidate => candidate.Name == method && candidate.GetParameters().Length == arguments.Length)
-            .SingleOrDefault()
-            ?? throw new InvalidOperationException($"RAPI+ method not found: {method}/{arguments.Length}");
+            .ToArray();
+        var compatible = candidates
+            .Where(candidate => candidate.GetParameters().Zip(arguments, (parameter, argument) => IsCompatible(parameter.ParameterType, argument)).All(match => match))
+            .ToArray();
+        if (compatible.Length == 0)
+            throw new InvalidOperationException($"RAPI+ method not found for compatible arguments: {method}/{arguments.Length}");
+
+        var methodInfo = compatible
+            .OrderByDescending(candidate => candidate.GetParameters()
+                .Zip(arguments, (parameter, argument) => argument is not null && parameter.ParameterType == argument.GetType())
+                .Count(match => match))
+            .First();
         try
         {
             return methodInfo.Invoke(target, arguments);
@@ -598,6 +1288,13 @@ sealed class RapiSession
         {
             throw exception.InnerException;
         }
+    }
+
+    private static bool IsCompatible(Type parameterType, object? argument)
+    {
+        if (argument is null)
+            return !parameterType.IsValueType || Nullable.GetUnderlyingType(parameterType) is not null;
+        return parameterType.IsInstanceOfType(argument);
     }
 
     private TaskCompletionSource<object?> NewWaiter()
@@ -611,6 +1308,39 @@ sealed class RapiSession
 
     private static string? ReadString(JsonElement element, string property)
         => element.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null ? value.GetString() : null;
+
+    private static bool IsTruthy(string? value)
+        => value is not null && (value.Equals("true", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("y", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("1", StringComparison.OrdinalIgnoreCase));
+
+    private static double ReadDouble(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value)) return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)) return number;
+        return double.TryParse(value.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? number : 0;
+    }
+
+    private static double? FirstDouble(object target, params string[] properties)
+    {
+        foreach (var property in properties)
+        {
+            var value = UnwrapValue(Property(target, property));
+            if (value is null) continue;
+            if (value is double number && double.IsFinite(number)) return number;
+            if (double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out number) && double.IsFinite(number)) return number;
+        }
+        return null;
+    }
+
+    private static object? UnwrapValue(object? value)
+    {
+        if (value is null) return null;
+        var use = Property(value, "Use");
+        if (use is bool shouldUse && !shouldUse) return null;
+        return Property(value, "Value") ?? value;
+    }
 
     private static int ReadInt(object? target, string property)
         => int.TryParse(ReadString(target, property), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : 0;

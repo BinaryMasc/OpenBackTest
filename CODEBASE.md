@@ -38,6 +38,7 @@ UI components categorized by functional area.
 - **`Controls.tsx`**: Top navigation, data loading controls, and session import/export management.
 - **`PlaybackBar.tsx`**: The bottom timeline and playback controls.
 - **`TradingPanel.tsx`**: The right-side panel for trade execution and account status.
+- **`ActualAccountPanel.tsx`**: Broker account snapshot, live statistics, and guarded Rithmic market-order controls.
 - **`StatsModal.tsx`**: Performance analysis dashboard with equity curve and export features.
 
 ### `src/hooks`
@@ -52,6 +53,7 @@ Zustand stores defining the global state and actions.
 - **`useBacktestStore.ts`**: Controls data playback (Play/Pause/Step), symbol selection, and multi-chart state management (array of `ChartConfig`).
 - **`useTradeStore.ts`**: Core trading engine. Manages positions, orders, PnL calculations, trade history, and session statistics.
 - **`useMarketDataStore.ts`**: Manages provider-neutral connection state, normalized symbols, historical data, and live candle subscriptions.
+- **`useExecutionStore.ts`**: Owns the selected broker account, live account snapshot, execution subscriptions, and order actions without touching simulation state.
 - **`useBinanceStore.ts`**: Deprecated compatibility alias for `useMarketDataStore`.
 - **`useChartStyleStore.ts`**: Manages styling properties for the chart, such as bullish/bearish candle colors, and persists user settings in localStorage.
 
@@ -77,6 +79,7 @@ Low-level extensions for KlineCharts.
 | `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, `loadData`, `updateLiveCandle`, and multi-chart configurations. |
 | `src/store/useTradeStore.ts` | Executes trades; tracks account equity, leverage, and aggregates positions for statistics. |
 | `src/store/useMarketDataStore.ts` | Owns the active market-data connection and maps provider events into normalized candles. |
+| `src/store/useExecutionStore.ts` | Owns actual-account state and routes provider-neutral orders through the active provider's execution adapter. |
 | `src/store/useBinanceStore.ts` | Compatibility alias for the provider-neutral market-data store. |
 | `src/store/useChartStyleStore.ts` | Central store managing persistent chart styles and styling properties. |
 | `src/components/TradingChart/CandleStyleEditor.tsx` | Floating overlay editor for bullish/bearish candle, border, and wick colors. |
@@ -90,7 +93,7 @@ Low-level extensions for KlineCharts.
 | `src/services/rithmic.ts` | Browser-side WebSocket adapter for the local RAPI+ Rithmic market-data gateway. |
 | `src/services/marketData.ts` | Shared `MarketDataSource`, `MarketDataConnection`, and subscription interfaces for provider adapters. |
 | `src/services/marketDataRegistry.ts` | Registry used to select an available market-data provider. |
-| `src/services/execution.ts` | Future order/execution contracts; no live order routing is wired yet. |
+| `src/services/execution.ts` | Provider-neutral account, order, fill, position, and live-statistics contracts. |
 
 ---
 
@@ -187,9 +190,9 @@ OpenBackTest consumes live data through a provider-neutral connection contract.
 - **`src/store/useBinanceStore.ts`** remains as a compatibility alias while consumers migrate to `useMarketDataStore`.
 - **`src/store/useBacktestStore.ts`** remains provider-agnostic and only receives normalized candles through `updateLiveCandle(kline)`.
 
-Rithmic market data is available through the local `gateway/` project. The gateway uses the Quantower-compatible RAPI+ runtime and the checked-in Chicago paper profile, while credentials and native library paths remain environment/browser configuration. Order routing is deliberately not implemented; it should be added as a separate execution interface only after market-data connectivity is validated.
+Rithmic market data and actual-account execution are available through the local `gateway/` project. The gateway uses the Quantower-compatible RAPI+ runtime and the checked-in Chicago paper profile, while credentials and native library paths remain environment/browser configuration. The provider-neutral execution contract is separate from chart data, so future providers such as Binance can add account and order adapters without changing the simulation code.
 
-The future execution boundary is defined in **`src/services/execution.ts`**. It models orders, order updates, fills, and broker positions without changing the current local simulation behavior.
+The execution boundary is defined in **`src/services/execution.ts`**. It models broker accounts, orders, order updates, fills, positions, and live statistics without changing the current local simulation behavior. Rithmic is the first provider implementing it.
 
 ### Importing Third-Party Trade Data
 Import trades from another platform and analyze them using OpenBackTest's Statistics Modal. Construct a JSON file that mimics the internal session state. Load a CSV file into the application before importing the JSON session file.

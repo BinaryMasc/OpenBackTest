@@ -4,12 +4,23 @@
       <TargetFramework>net8.0</TargetFramework>
       <ImplicitUsings>enable</ImplicitUsings>
       <Nullable>enable</Nullable>
-      <RithmicRapiDll Condition="'$(RithmicRapiDll)' == ''">$(RITHMIC_RAPI_DLL)</RithmicRapiDll>
+      <RithmicRapiDll Condition="'$(RithmicRapiDll)' == '' and '$(RITHMIC_RAPI_DLL)' != ''">$(RITHMIC_RAPI_DLL)</RithmicRapiDll>
+      <RithmicRapiDll Condition="'$(RithmicRapiDll)' == ''">$(MSBuildThisFileDirectory)runtime/rapiplus.dll</RithmicRapiDll>
     </PropertyGroup>
     <ItemGroup>
       <Reference Include="rapiplus" Condition="'$(RithmicRapiDll)' != ''">
         <HintPath>$(RithmicRapiDll)</HintPath>
         <Private>false</Private>
       </Reference>
+      <None Update="runtime/rapiplus.dll">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <TargetPath>rapiplus.dll</TargetPath>
+      </None>
+      <None Update="certificates/rithmic_ssl_cert_auth_params">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <TargetPath>rithmic_ssl_cert_auth_params</TargetPath>
+      </None>
     </ItemGroup>
 </Project>

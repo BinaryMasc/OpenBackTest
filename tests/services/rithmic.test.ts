@@ -22,7 +22,7 @@ class FakeWebSocket {
 
   send(payload: string) {
     this.sent.push(payload);
-    const message = JSON.parse(payload) as { type: string; requestId?: string };
+    const message = JSON.parse(payload) as { type: string; requestId?: string; order?: { symbol: string; side: 'buy' | 'sell'; quantity: number }; accountId?: string };
     if (message.type === 'connect') {
       queueMicrotask(() => this.onmessage?.({
         data: JSON.stringify({
@@ -37,6 +37,52 @@ class FakeWebSocket {
           type: 'history',
           requestId: message.requestId,
           candles: [{ time: 1000, open: 1, high: 2, low: 1, close: 2, volume: 3 }]
+        })
+      } as MessageEvent<string>));
+    }
+    if (message.type === 'accounts') {
+      queueMicrotask(() => this.onmessage?.({
+        data: JSON.stringify({
+          type: 'accounts',
+          requestId: message.requestId,
+          accounts: [{ id: 'acct-1', fcmId: 'FCM', ibId: 'IB', displayName: 'acct-1 · FCM' }]
+        })
+      } as MessageEvent<string>));
+    }
+    if (message.type === 'accountState') {
+      queueMicrotask(() => this.onmessage?.({
+        data: JSON.stringify({
+          type: 'accountState',
+          requestId: message.requestId,
+          state: {
+            account: { id: message.accountId || 'acct-1' },
+            balance: 10000,
+            equity: 10500,
+            realizedPnL: 250,
+            unrealizedPnL: 250,
+            positions: [],
+            orders: [],
+            statistics: { dailyPnL: 500, openPositions: 0, workingOrders: 0, updatedAt: 1000 },
+            updatedAt: 1000
+          }
+        })
+      } as MessageEvent<string>));
+    }
+    if (message.type === 'order') {
+      queueMicrotask(() => this.onmessage?.({
+        data: JSON.stringify({
+          type: 'orderUpdate',
+          requestId: message.requestId,
+          update: {
+            orderId: 'order-1',
+            accountId: 'acct-1',
+            symbol: message.order?.symbol,
+            side: message.order?.side,
+            quantity: message.order?.quantity,
+            orderType: 'market',
+            status: 'working',
+            filledQuantity: 0
+          }
         })
       } as MessageEvent<string>));
     }
@@ -58,13 +104,14 @@ describe('RithmicService', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
 
     const connection = await RithmicService.connect({
-      credentials: { username: 'test-user', password: 'test-password' }
+      credentials: { username: 'test-user', password: 'test-password', gatewayUrl: 'http://127.0.0.1:8765' }
     });
     const symbols = await connection.listSymbols();
     const candles = await connection.fetchHistoricalCandles('ESU6.CME', '1m', 1);
 
     expect(symbols[0].symbol).toBe('ESU6.CME');
     expect(candles).toHaveLength(1);
+    expect(FakeWebSocket.lastInstance?.url).toBe('ws://127.0.0.1:8765');
     expect(FakeWebSocket.lastInstance?.sent.map(JSON.parse)).toEqual([
       { type: 'connect', credentials: { username: 'test-user', password: 'test-password' } },
       expect.objectContaining({ type: 'history', symbol: 'ESU6.CME', interval: '1m', limit: 1 })
@@ -75,5 +122,39 @@ describe('RithmicService', () => {
 
   it('requires both Rithmic credential fields', async () => {
     await expect(RithmicService.connect({ credentials: { username: 'test-user' } })).rejects.toThrow('password');
+  });
+
+  it('exposes account discovery and execution through the authenticated connection', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+
+    const connection = await RithmicService.connect({
+      credentials: { username: 'test-user', password: 'test-password' }
+    });
+    const execution = connection.getExecutionConnection?.();
+
+    expect(execution).toBeDefined();
+    const accounts = await execution!.listAccounts();
+    const state = await execution!.getAccountState('acct-1');
+    const update = await execution!.placeOrder({
+      accountId: 'acct-1',
+      symbol: 'ESU6.CME',
+      side: 'buy',
+      quantity: 1,
+      orderType: 'market'
+    });
+
+    expect(accounts).toEqual([{ id: 'acct-1', fcmId: 'FCM', ibId: 'IB', displayName: 'acct-1 · FCM' }]);
+    expect(state.equity).toBe(10500);
+    expect(update.orderId).toBe('order-1');
+    expect(FakeWebSocket.lastInstance?.sent.map(JSON.parse)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'accounts' }),
+      expect.objectContaining({ type: 'accountState', accountId: 'acct-1' }),
+      expect.objectContaining({
+        type: 'order',
+        order: expect.objectContaining({ accountId: 'acct-1', symbol: 'ESU6.CME', side: 'buy', quantity: 1 })
+      })
+    ]));
+
+    connection.close();
   });
 });

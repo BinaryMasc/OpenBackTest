@@ -1,5 +1,13 @@
 import type { Candle, MarketSymbol } from '../types';
 import type {
+  ExecutionAccount,
+  ExecutionAccountState,
+  ExecutionConnection,
+  ExecutionFill,
+  OrderRequest,
+  OrderUpdate,
+} from './execution';
+import type {
   MarketDataConnection,
   MarketDataConnectionOptions,
   MarketDataSource,
@@ -8,10 +16,13 @@ import type {
 
 export const RITHMIC_SOURCE_ID = 'rithmic';
 export const RITHMIC_SOURCE_NAME = 'Phidias Rithmic';
+export const DEFAULT_RITHMIC_GATEWAY_ADDRESS = 'http://127.0.0.1:8765';
 
 export interface RithmicCredentials {
   username: string;
   password: string;
+  /** HTTP is accepted in the form; the WebSocket transport is normalized below. */
+  gatewayUrl?: string;
 }
 
 interface GatewayMessage {
@@ -21,12 +32,21 @@ interface GatewayMessage {
   symbols?: MarketSymbol[];
   candles?: Candle[];
   candle?: Candle;
+  accounts?: ExecutionAccount[];
+  state?: ExecutionAccountState;
+  update?: OrderUpdate;
+  fill?: ExecutionFill;
 }
 
 function getGatewayUrl(options?: MarketDataConnectionOptions): string {
-  const configuredUrl = options?.settings?.gatewayUrl;
-  if (typeof configuredUrl === 'string' && configuredUrl.length > 0) return configuredUrl;
-  return import.meta.env.VITE_RITHMIC_GATEWAY_URL || 'ws://127.0.0.1:8765';
+  const configuredUrl = options?.settings?.gatewayUrl ?? options?.credentials?.gatewayUrl;
+  const address = typeof configuredUrl === 'string' && configuredUrl.trim().length > 0
+    ? configuredUrl.trim()
+    : import.meta.env.VITE_RITHMIC_GATEWAY_URL || DEFAULT_RITHMIC_GATEWAY_ADDRESS;
+  if (address.startsWith('http://')) return `ws://${address.slice('http://'.length)}`;
+  if (address.startsWith('https://')) return `wss://${address.slice('https://'.length)}`;
+  if (address.startsWith('ws://') || address.startsWith('wss://')) return address;
+  return `ws://${address}`;
 }
 
 function getCredentials(options?: MarketDataConnectionOptions): RithmicCredentials {
@@ -46,13 +66,16 @@ function createRequestId(): string {
   return `rithmic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-class RithmicGatewayConnection implements MarketDataConnection {
+class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnection {
   readonly sourceId = RITHMIC_SOURCE_ID;
   readonly sourceName = RITHMIC_SOURCE_NAME;
 
   private readonly socket: WebSocket;
   private readonly symbols: MarketSymbol[];
   private readonly candleHandlers = new Set<(candle: Candle) => void>();
+  private readonly accountHandlers = new Map<string, Set<(state: ExecutionAccountState) => void>>();
+  private readonly orderHandlers = new Set<(update: OrderUpdate) => void>();
+  private readonly fillHandlers = new Set<(fill: ExecutionFill) => void>();
   private readonly pending = new Map<string, {
     resolve: (message: GatewayMessage) => void;
     reject: (error: Error) => void;
@@ -68,6 +91,17 @@ class RithmicGatewayConnection implements MarketDataConnection {
       if (message.type === 'candle' && message.candle) {
         this.candleHandlers.forEach(handler => handler(message.candle!));
         return;
+      }
+
+      if (message.type === 'accountState' && message.state) {
+        const handlers = this.accountHandlers.get(message.state.account.id);
+        handlers?.forEach(handler => handler(message.state!));
+      }
+      if (message.type === 'orderUpdate' && message.update) {
+        this.orderHandlers.forEach(handler => handler(message.update!));
+      }
+      if (message.type === 'fill' && message.fill) {
+        this.fillHandlers.forEach(handler => handler(message.fill!));
       }
 
       if (!message.requestId) return;
@@ -146,22 +180,95 @@ class RithmicGatewayConnection implements MarketDataConnection {
     };
   };
 
+  getExecutionConnection = (): ExecutionConnection => this;
+
+  listAccounts = async (): Promise<ExecutionAccount[]> => {
+    const response = await this.request({ type: 'accounts' });
+    return response.accounts || [];
+  };
+
+  getAccountState = async (accountId: string): Promise<ExecutionAccountState> => {
+    const response = await this.request({ type: 'accountState', accountId });
+    if (!response.state) throw new Error('Rithmic gateway returned no account state');
+    return response.state;
+  };
+
+  subscribeAccountState = (
+    accountId: string,
+    onUpdate: (state: ExecutionAccountState) => void
+  ): MarketDataSubscription => {
+    let handlers = this.accountHandlers.get(accountId);
+    if (!handlers) {
+      handlers = new Set();
+      this.accountHandlers.set(accountId, handlers);
+      this.socket.send(JSON.stringify({ type: 'accountSubscribe', accountId }));
+    }
+    handlers.add(onUpdate);
+
+    return {
+      close: () => {
+        const currentHandlers = this.accountHandlers.get(accountId);
+        currentHandlers?.delete(onUpdate);
+        if (currentHandlers?.size === 0) {
+          this.accountHandlers.delete(accountId);
+          if (this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ type: 'accountUnsubscribe', accountId }));
+          }
+        }
+      }
+    };
+  };
+
+  placeOrder = async (order: OrderRequest): Promise<OrderUpdate> => {
+    const response = await this.request({ type: 'order', order });
+    if (!response.update) throw new Error('Rithmic gateway returned no order update');
+    return response.update;
+  };
+
+  cancelOrder = async (orderId: string): Promise<OrderUpdate> => {
+    const response = await this.request({ type: 'cancelOrder', orderId });
+    if (!response.update) throw new Error('Rithmic gateway returned no cancellation update');
+    return response.update;
+  };
+
+  cancelAll = async (symbol?: string): Promise<void> => {
+    await this.request({ type: 'cancelAll', symbol });
+  };
+
+  flatten = async (symbol?: string): Promise<void> => {
+    await this.request({ type: 'flatten', symbol });
+  };
+
+  subscribeOrderUpdates = (onUpdate: (update: OrderUpdate) => void): MarketDataSubscription => {
+    this.orderHandlers.add(onUpdate);
+    return { close: () => this.orderHandlers.delete(onUpdate) };
+  };
+
+  subscribeFills = (onFill: (fill: ExecutionFill) => void): MarketDataSubscription => {
+    this.fillHandlers.add(onFill);
+    return { close: () => this.fillHandlers.delete(onFill) };
+  };
+
   close = (): void => {
     this.pending.forEach(request => {
       clearTimeout(request.timeout);
       request.reject(new Error('Rithmic connection closed'));
     });
     this.pending.clear();
+    this.accountHandlers.clear();
+    this.orderHandlers.clear();
+    this.fillHandlers.clear();
     this.socket.close();
   };
 
   private request(message: Record<string, unknown>): Promise<GatewayMessage> {
     const requestId = createRequestId();
+    const timeoutMs = message.type === 'history' ? 300000 : 60000;
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId);
         reject(new Error('Rithmic gateway request timed out'));
-      }, 60000);
+      }, timeoutMs);
       this.pending.set(requestId, { resolve, reject, timeout });
       this.socket.send(JSON.stringify({ ...message, requestId }));
     });

@@ -1,4 +1,4 @@
-import type { RithmicCredentials } from './rithmic';
+import { DEFAULT_RITHMIC_GATEWAY_ADDRESS, type RithmicCredentials } from './rithmic';
 
 const DATABASE_NAME = 'openbacktest-secure-storage';
 const STORE_NAME = 'rithmic-credentials';
@@ -74,7 +74,11 @@ export async function loadStoredRithmicCredentials(): Promise<RithmicCredentials
     );
     const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as Partial<RithmicCredentials>;
     if (typeof parsed.username !== 'string' || typeof parsed.password !== 'string') return null;
-    return { username: parsed.username, password: parsed.password };
+    return {
+      username: parsed.username,
+      password: parsed.password,
+      gatewayUrl: parsed.gatewayUrl || DEFAULT_RITHMIC_GATEWAY_ADDRESS
+    };
   } catch {
     return null;
   } finally {

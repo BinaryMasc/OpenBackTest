@@ -1,8 +1,8 @@
 # OpenBackTest Rithmic gateway
 
-This is a local, read-only WebSocket gateway for OpenBackTest's Rithmic data
-provider. It uses the native RAPI+ .NET assembly, matching the runtime path
-used by Quantower's Rithmic connector.
+This is a local WebSocket gateway for OpenBackTest's Rithmic data and actual
+account modes. It uses the native RAPI+ .NET assembly, matching the runtime
+path used by Quantower's Rithmic connector.
 
 The default profile is **Rithmic Paper Trading / Chicago Area**. It contains
 public connection metadata only; never put a username, password, certificate,
@@ -11,17 +11,21 @@ or private key in this repository.
 ## Requirements
 
 - .NET 8 SDK.
-- The RAPI+ runtime supplied by Rithmic or an authorized platform installation.
-  Set `RITHMIC_RAPI_DLL` to the full path of `rapiplus.dll`.
-- The RAPI+ client-auth certificate file when required by the installed runtime.
-  Set `RITHMIC_CA_FILE` to that file's full path.
-- Rithmic paper-trading credentials with market-data permissions.
+- The gateway includes the validated RAPI+ runtime at
+  `gateway/runtime/rapiplus.dll` and its client-auth certificate at
+  `gateway/certificates/rithmic_ssl_cert_auth_params`. Both are copied to the
+  build and publish output automatically.
+- Set `RITHMIC_RAPI_DLL` or `RITHMIC_CA_FILE` only when overriding those
+  bundled files with another authorized runtime or certificate.
+- Rithmic paper-trading credentials with market-data, account, and order
+  permissions.
 
 Example (bash):
 
 ```sh
-export RITHMIC_RAPI_DLL=/path/to/rapiplus.dll
-export RITHMIC_CA_FILE=/path/to/rithmic_ssl_cert_auth_params
+# Optional overrides for the bundled gateway/runtime and certificate files.
+# export RITHMIC_RAPI_DLL=/path/to/rapiplus.dll
+# export RITHMIC_CA_FILE=/path/to/rithmic_ssl_cert_auth_params
 dotnet run --project gateway/RithmicGateway.csproj
 ```
 
@@ -35,11 +39,23 @@ credentials**. The browser connects to `ws://127.0.0.1:8765` by default. Set
   (Gold). Use exchange-qualified values in `RITHMIC_SYMBOLS` (for example,
   `CME.ESU6,CME.NQU6,COMEX.GCQ6`) when changing the list.
 - History is requested as RAPI+ trade replay and aggregated into one-minute
-  candles. The browser's existing aggregation handles higher chart timeframes.
+  candles. Requests are replayed in bounded chunks so the chart is not limited
+  to the broker's single-day replay window. The default is 10,000 minutes;
+  increase it with `RITHMIC_MAX_HISTORY_MINUTES` when appropriate. The
+  browser's existing aggregation handles higher chart timeframes.
 - Live RAPI+ trade prints update the current one-minute candle.
-- Only repository/market-data login, reference data, trade replay, subscribe,
-  unsubscribe, and logout are implemented. There are no order or account
-  mutation calls.
+- The gateway exposes account discovery, PnL/position snapshots and streams,
+  market- and limit-order submission, order cancellation, cancel-all, and position
+  flattening to Actual mode. Before sending an order it resolves the enabled
+  Rithmic trade route and waits briefly for the broker's line update, so
+  working, filled, cancelled, and rejected states stay correlated with the
+  browser order. Set `RITHMIC_TRADE_ROUTE` to override route discovery.
+  It intentionally keeps the browser protocol provider-neutral; Rithmic-specific
+  translation stays here.
+- Actual mode is live execution from the broker's perspective. Start with a
+  paper account, confirm the selected symbol and quantity, and verify the
+  installed RAPI+ runtime's permissions and conformance requirements before
+  using production credentials.
 - A single browser session is accepted at a time. The gateway keeps credentials
   in memory for that session and clears its callback handler on disconnect.
 
