@@ -17,6 +17,11 @@ import type {
 export const RITHMIC_SOURCE_ID = 'rithmic';
 export const RITHMIC_SOURCE_NAME = 'Rithmic';
 export const DEFAULT_RITHMIC_GATEWAY_ADDRESS = 'http://127.0.0.1:8765';
+// A Rithmic login can take longer than a browser WebSocket upgrade: the
+// gateway must authenticate its repository and market-data sessions, then
+// resolve its configured symbol metadata (up to roughly 195 seconds in the
+// documented worst case), before it can acknowledge the browser.
+const RITHMIC_CONNECT_TIMEOUT_MS = 240_000;
 
 export interface RithmicCredentials {
   username: string;
@@ -64,6 +69,12 @@ function getCredentials(options?: MarketDataConnectionOptions): RithmicCredentia
 
 function createRequestId(): string {
   return `rithmic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createAbortError(): Error {
+  const error = new Error('Rithmic gateway connection was cancelled');
+  error.name = 'AbortError';
+  return error;
 }
 
 class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnection {
@@ -127,36 +138,97 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
     };
   }
 
-  static connect(credentials: RithmicCredentials, gatewayUrl: string): Promise<RithmicGatewayConnection> {
-    return new Promise((resolve, reject) => {
-      const socket = new WebSocket(gatewayUrl);
-      let settled = false;
-      const connectTimeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        socket.close();
-        reject(new Error(`Rithmic gateway did not respond at ${gatewayUrl}`));
-      }, 30000);
+  static connect(
+    credentials: RithmicCredentials,
+    gatewayUrl: string,
+    signal?: AbortSignal
+  ): Promise<RithmicGatewayConnection> {
+    if (signal?.aborted) return Promise.reject(createAbortError());
 
-      socket.onerror = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(connectTimeout);
-        reject(new Error(`Could not reach the Rithmic gateway at ${gatewayUrl}`));
+    return new Promise((resolve, reject) => {
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(gatewayUrl);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(`Could not reach the Rithmic gateway at ${gatewayUrl}`));
+        return;
+      }
+
+      let settled = false;
+      let connectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+      const closeSocket = () => {
+        if (socket.readyState !== WebSocket.CLOSING && socket.readyState !== WebSocket.CLOSED) {
+          try {
+            socket.close();
+          } catch {
+            // A browser may reject close() while constructing a failed socket.
+          }
+        }
       };
 
-      socket.onopen = () => socket.send(JSON.stringify({ type: 'connect', credentials }));
+      const cleanup = () => {
+        if (connectTimeout) clearTimeout(connectTimeout);
+        signal?.removeEventListener('abort', onAbort);
+      };
+
+      const rejectConnection = (error: Error, shouldClose = true) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (shouldClose) closeSocket();
+        reject(error);
+      };
+
+      const onAbort = () => rejectConnection(createAbortError());
+
+      connectTimeout = setTimeout(() => {
+        rejectConnection(new Error(`Rithmic gateway did not respond at ${gatewayUrl}`));
+      }, RITHMIC_CONNECT_TIMEOUT_MS);
+
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+
+      socket.onerror = () => {
+        rejectConnection(new Error(`Could not reach the Rithmic gateway at ${gatewayUrl}`));
+      };
+
+      socket.onclose = event => {
+        const detail = event?.reason || (event?.code ? ` (code ${event.code})` : '');
+        rejectConnection(new Error(`Rithmic gateway closed before login completed${detail}`), false);
+      };
+
+      socket.onopen = () => {
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        try {
+          socket.send(JSON.stringify({ type: 'connect', credentials }));
+        } catch (error) {
+          rejectConnection(error instanceof Error ? error : new Error('Could not send the Rithmic login request'));
+        }
+      };
+
       socket.onmessage = event => {
-        const message = JSON.parse(String(event.data)) as GatewayMessage;
+        let message: GatewayMessage;
+        try {
+          message = JSON.parse(String(event.data)) as GatewayMessage;
+        } catch {
+          rejectConnection(new Error('Rithmic gateway returned an invalid login response'));
+          return;
+        }
+
         if (message.type === 'connected') {
+          if (settled) return;
           settled = true;
-          clearTimeout(connectTimeout);
+          cleanup();
           resolve(new RithmicGatewayConnection(socket, message.symbols || []));
         } else if (message.type === 'error' && !settled) {
-          settled = true;
-          clearTimeout(connectTimeout);
-          socket.close();
-          reject(new Error(message.message || 'Rithmic login failed'));
+          rejectConnection(new Error(message.message || 'Rithmic login failed'));
         }
       };
     });
@@ -301,5 +373,9 @@ export const RithmicService: MarketDataSource = {
   id: RITHMIC_SOURCE_ID,
   name: RITHMIC_SOURCE_NAME,
   requiresCredentials: true,
-  connect: async options => RithmicGatewayConnection.connect(getCredentials(options), getGatewayUrl(options))
+  connect: async options => RithmicGatewayConnection.connect(
+    getCredentials(options),
+    getGatewayUrl(options),
+    options?.signal
+  )
 };

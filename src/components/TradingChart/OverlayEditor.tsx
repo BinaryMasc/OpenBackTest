@@ -34,6 +34,7 @@ export function OverlayEditor({
 }: OverlayEditorProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [textValue, setTextValue] = useState((overlay.extendData as string) ?? 'Text');
+  const isTradePosition = overlay.name === 'trade';
 
   // Sync local state when overlay changes
   useEffect(() => {
@@ -89,36 +90,44 @@ export function OverlayEditor({
       </div>
 
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400">Color</label>
-          <input
-            type="color"
-            value={overlayColor}
-            onChange={e => {
-              const newColor = e.target.value;
-              onColorChange(newColor);
-              updateOverlayStyle(newColor, overlayOpacity, overlayFontSize);
-            }}
-            className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600"
-          />
-        </div>
+        {isTradePosition ? (
+          <p className="rounded border border-slate-700 bg-dark-700/50 px-3 py-2 text-xs leading-5 text-slate-300">
+            Profit and loss zones use fixed green and red colors.
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-slate-400">Color</label>
+              <input
+                type="color"
+                value={overlayColor}
+                onChange={e => {
+                  const newColor = e.target.value;
+                  onColorChange(newColor);
+                  updateOverlayStyle(newColor, overlayOpacity, overlayFontSize);
+                }}
+                className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600"
+              />
+            </div>
 
-        <div className="flex flex-col gap-1 mt-2">
-          <label className="text-xs text-slate-400">Opacity ({Math.round(overlayOpacity * 100)}%)</label>
-          <input
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.1"
-            value={overlayOpacity}
-            onChange={e => {
-              const newOpacity = Number(e.target.value);
-              onOpacityChange(newOpacity);
-              updateOverlayStyle(overlayColor, newOpacity, overlayFontSize);
-            }}
-            className="w-full accent-primary-500"
-          />
-        </div>
+            <div className="flex flex-col gap-1 mt-2">
+              <label className="text-xs text-slate-400">Opacity ({Math.round(overlayOpacity * 100)}%)</label>
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.1"
+                value={overlayOpacity}
+                onChange={e => {
+                  const newOpacity = Number(e.target.value);
+                  onOpacityChange(newOpacity);
+                  updateOverlayStyle(overlayColor, newOpacity, overlayFontSize);
+                }}
+                className="w-full accent-primary-500"
+              />
+            </div>
+          </>
+        )}
 
         {overlay.name === 'text' && (
           <>

@@ -5,6 +5,7 @@ using System.Net.WebSockets;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
+using System.Threading.Channels;
 using com.omnesys.rapi;
 
 var rapiDllPath = Environment.GetEnvironmentVariable("RITHMIC_RAPI_DLL")
@@ -15,7 +16,6 @@ if (!File.Exists(rapiDllPath))
 _ = AssemblyLoadContext.Default.LoadFromAssemblyPath(rapiDllPath);
 
 var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-var sessionGate = new SemaphoreSlim(1, 1);
 var host = Environment.GetEnvironmentVariable("RITHMIC_GATEWAY_HOST") ?? "127.0.0.1";
 var port = int.TryParse(Environment.GetEnvironmentVariable("RITHMIC_GATEWAY_PORT"), out var configuredPort)
     ? configuredPort
@@ -36,17 +36,14 @@ while (true)
         continue;
     }
 
-    if (!await sessionGate.WaitAsync(0))
-    {
-        context.Response.StatusCode = 409;
-        context.Response.Close();
-        continue;
-    }
-
-    _ = ServeSessionAsync(context, sessionGate);
+    // Each browser WebSocket owns an independent RAPI+ session.  Do not gate
+    // accepted sockets here: a tab reconnecting after a transport failure (or
+    // a second authorized client) must not be rejected while another session
+    // is still shutting down.
+    _ = ServeSessionAsync(context);
 }
 
-async Task ServeSessionAsync(HttpListenerContext context, SemaphoreSlim gate)
+async Task ServeSessionAsync(HttpListenerContext context)
 {
     try
     {
@@ -56,10 +53,6 @@ async Task ServeSessionAsync(HttpListenerContext context, SemaphoreSlim gate)
     catch (Exception exception)
     {
         Console.Error.WriteLine($"gateway session ended: {exception.Message}");
-    }
-    finally
-    {
-        gate.Release();
     }
 }
 
@@ -181,29 +174,25 @@ sealed class RapiConfig
             .ToArray();
 }
 
-static class CallbackRelay
-{
-    private static Action<string, object?>? handler;
-
-    public static void Set(Action<string, object?> callback) => Volatile.Write(ref handler, callback);
-    public static void Clear() => Volatile.Write(ref handler, null);
-    public static void Dispatch(string eventName, object? info) => Volatile.Read(ref handler)?.Invoke(eventName, info);
-}
-
 sealed class GatewayCallbacks : RCallbacks
 {
-    public override void Alert(AlertInfo info) => CallbackRelay.Dispatch(nameof(Alert), info);
-    public override void AccountList(AccountListInfo info) => CallbackRelay.Dispatch(nameof(AccountList), info);
-    public override void ExchangeList(ExchangeListInfo info) => CallbackRelay.Dispatch(nameof(ExchangeList), info);
-    public override void FillReport(OrderFillReport report) => CallbackRelay.Dispatch(nameof(FillReport), report);
-    public override void LineUpdate(LineInfo info) => CallbackRelay.Dispatch(nameof(LineUpdate), info);
-    public override void PnlUpdate(PnlInfo info) => CallbackRelay.Dispatch(nameof(PnlUpdate), info);
-    public override void PnlReplay(PnlReplayInfo info) => CallbackRelay.Dispatch(nameof(PnlReplay), info);
-    public override void RefData(RefDataInfo info) => CallbackRelay.Dispatch(nameof(RefData), info);
-    public override void Bar(BarInfo info) => CallbackRelay.Dispatch(nameof(Bar), info);
-    public override void BarReplay(BarReplayInfo info) => CallbackRelay.Dispatch(nameof(BarReplay), info);
-    public override void TradePrint(TradeInfo info) => CallbackRelay.Dispatch(nameof(TradePrint), info);
-    public override void TradeRouteList(TradeRouteListInfo info) => CallbackRelay.Dispatch(nameof(TradeRouteList), info);
+    private readonly Action<string, object?> dispatch;
+
+    public GatewayCallbacks(Action<string, object?> dispatch) => this.dispatch = dispatch;
+
+    public override void Alert(AlertInfo info) => dispatch(nameof(Alert), info);
+    public override void AccountList(AccountListInfo info) => dispatch(nameof(AccountList), info);
+    public override void ExchangeList(ExchangeListInfo info) => dispatch(nameof(ExchangeList), info);
+    public override void FillReport(OrderFillReport report) => dispatch(nameof(FillReport), report);
+    public override void LineUpdate(LineInfo info) => dispatch(nameof(LineUpdate), info);
+    public override void OpenOrderReplay(OrderReplayInfo info) => dispatch(nameof(OpenOrderReplay), info);
+    public override void PnlUpdate(PnlInfo info) => dispatch(nameof(PnlUpdate), info);
+    public override void PnlReplay(PnlReplayInfo info) => dispatch(nameof(PnlReplay), info);
+    public override void RefData(RefDataInfo info) => dispatch(nameof(RefData), info);
+    public override void Bar(BarInfo info) => dispatch(nameof(Bar), info);
+    public override void BarReplay(BarReplayInfo info) => dispatch(nameof(BarReplay), info);
+    public override void TradePrint(TradeInfo info) => dispatch(nameof(TradePrint), info);
+    public override void TradeRouteList(TradeRouteListInfo info) => dispatch(nameof(TradeRouteList), info);
 }
 
 sealed class CandleBuffer
@@ -363,6 +352,19 @@ sealed class RapiSession
     private readonly JsonSerializerOptions serializerOptions;
     private readonly RapiConfig config = new();
     private readonly SemaphoreSlim sendGate = new(1, 1);
+    private readonly CancellationTokenSource lifetime = new();
+    // A WebSocket permits only one outstanding receive. After the initial
+    // connect message, this pump owns reads for the rest of the session so it
+    // can notice a client-side close while RAPI+ login/ref-data work is still
+    // pending. Requests received during that work are preserved for the main
+    // session loop rather than being lost by the close watcher.
+    private readonly Channel<JsonElement> incoming = Channel.CreateBounded<JsonElement>(
+        new BoundedChannelOptions(128)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            FullMode = BoundedChannelFullMode.Wait
+        });
     private readonly CandleBuffer candleBuffer = new();
     private readonly HashSet<string> subscriptions = new(StringComparer.OrdinalIgnoreCase);
     private Assembly? assembly;
@@ -377,8 +379,14 @@ sealed class RapiSession
     private TaskCompletionSource<object?>? accountListWaiter;
     private TaskCompletionSource<object?>? tradeRouteWaiter;
     private readonly Dictionary<string, TaskCompletionSource<object?>> pnlWaiters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TaskCompletionSource<object?>> openOrderReplayWaiters = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TaskCompletionSource<object?>> orderWaiters = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> pendingOrderQuantities = new(StringComparer.OrdinalIgnoreCase);
+    // A Rithmic line update can arrive after the initial order acknowledgement
+    // timeout. Keep that local acknowledgement in the broker snapshot until a
+    // replay or live line update replaces it, so a PnL refresh cannot make a
+    // just-submitted protective order disappear from the chart.
+    private readonly HashSet<string> provisionalOrderIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly object candleBroadcastGate = new();
     private readonly Dictionary<string, (long CandleTime, long PublishedAtMs)> candleBroadcasts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, object> accountHandles = new(StringComparer.OrdinalIgnoreCase);
@@ -389,7 +397,8 @@ sealed class RapiSession
     private bool tradeRoutesLoaded;
     private string? activeAccountId;
     private bool barReplayActive;
-    private bool closed;
+    private Task? receivePump;
+    private int closeStarted;
 
     public RapiSession(WebSocket browser, JsonSerializerOptions serializerOptions)
     {
@@ -401,7 +410,7 @@ sealed class RapiSession
     {
         try
         {
-            var firstMessage = await ReceiveAsync(TimeSpan.FromSeconds(30))
+            var firstMessage = await ReceiveAsync(TimeSpan.FromSeconds(30), CancellationToken.None)
                 ?? throw new InvalidOperationException("The gateway received no connect request.");
             if (ReadString(firstMessage, "type") != "connect")
                 throw new InvalidOperationException("The first gateway message must be a connect request.");
@@ -412,22 +421,28 @@ sealed class RapiSession
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                 throw new InvalidOperationException("Rithmic username and password are required.");
 
-            await ConnectRithmicAsync(username, password);
-            await SendAsync(new { type = "connected", symbols = await ResolveSymbolsAsync() });
+            receivePump = ReceivePumpAsync();
+            await ConnectRithmicAsync(username, password, lifetime.Token);
+            var symbols = await ResolveSymbolsAsync(lifetime.Token);
+            lifetime.Token.ThrowIfCancellationRequested();
+            await SendAsync(new { type = "connected", symbols });
 
-            while (!closed && browser.State == WebSocketState.Open)
+            await foreach (var message in incoming.Reader.ReadAllAsync(lifetime.Token))
             {
-                var message = await ReceiveAsync(Timeout.InfiniteTimeSpan);
-                if (message is null) break;
                 try
                 {
-                    await HandleMessageAsync(message.Value);
+                    await HandleMessageAsync(message);
                 }
                 catch (Exception exception)
                 {
-                    await SendErrorAsync(exception.Message, ReadString(message.Value, "requestId"));
+                    await SendErrorAsync(exception.Message, ReadString(message, "requestId"));
                 }
             }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // The receive pump observed that the browser closed. Do not keep
+            // a RAPI+ login alive, and do not attempt to send to that client.
         }
         catch (Exception exception)
         {
@@ -439,7 +454,45 @@ sealed class RapiSession
         }
     }
 
-    private async Task ConnectRithmicAsync(string username, string password)
+    private async Task ReceivePumpAsync()
+    {
+        try
+        {
+            while (!lifetime.IsCancellationRequested && browser.State == WebSocketState.Open)
+            {
+                var message = await ReceiveAsync(Timeout.InfiniteTimeSpan, lifetime.Token);
+                if (message is null) break;
+                // Do not block the only reader behind a client flood: that
+                // would prevent it from observing a subsequent close frame.
+                // Normal requests remain queued in order; an overflowing
+                // client is disconnected and its broker work is cancelled.
+                if (!incoming.Writer.TryWrite(message.Value))
+                    throw new InvalidOperationException("The gateway request queue is full.");
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // Session teardown cancelled the sole WebSocket reader.
+        }
+        catch (Exception) when (lifetime.IsCancellationRequested)
+        {
+            // Some WebSocket implementations report an aborted read instead
+            // of cancellation when the close path disposes the transport.
+        }
+        catch (Exception exception)
+        {
+            // A broken browser transport has the same lifetime semantics as a
+            // close frame. The RAPI+ waits below must not outlive it.
+            Console.Error.WriteLine($"gateway client receive ended: {exception.Message}");
+        }
+        finally
+        {
+            incoming.Writer.TryComplete();
+            if (!lifetime.IsCancellationRequested) lifetime.Cancel();
+        }
+    }
+
+    private async Task ConnectRithmicAsync(string username, string password, CancellationToken cancellationToken)
     {
         assembly = typeof(RCallbacks).Assembly;
         if (!string.IsNullOrWhiteSpace(config.CertificatePath))
@@ -463,23 +516,25 @@ sealed class RapiSession
         var engineConstructor = engineType.GetConstructor(new[] { parameters.GetType() })
             ?? throw new InvalidOperationException("RAPI+ REngine constructor not found.");
         engine = engineConstructor.Invoke(new[] { parameters });
-        CallbackRelay.Set(OnCallback);
-        callbacks = new GatewayCallbacks();
+        // The callback is scoped to this RAPI+ engine. A static relay routes
+        // events to whichever client connected last and prevents concurrent
+        // gateway clients from safely sharing the listener.
+        callbacks = new GatewayCallbacks(OnCallback);
 
         Invoke(engine, "loginRepository", callbacks, null, username, password, config.RepositoryPlant);
-        await WaitForStateAsync("RepositorySessionState", "repository login", TimeSpan.FromSeconds(30));
+        await WaitForStateAsync("RepositorySessionState", "repository login", TimeSpan.FromSeconds(30), cancellationToken);
 
         Invoke(engine, "login", callbacks,
             null, username, password, config.MdPlant,
             null, username, password, config.TsPlant,
             config.PnlPlant,
             null, username, password, config.IhPlant);
-        await WaitForStateAsync("SessionState", "market-data login", TimeSpan.FromSeconds(45));
+        await WaitForStateAsync("SessionState", "market-data login", TimeSpan.FromSeconds(45), cancellationToken);
 
         Console.WriteLine("RAPI+ login succeeded for Rithmic Paper Trading / Chicago Area.");
     }
 
-    private async Task<List<object>> ResolveSymbolsAsync()
+    private async Task<List<object>> ResolveSymbolsAsync(CancellationToken cancellationToken)
     {
         var symbols = new List<object>();
         Invoke(engine!, "listExchanges", new object());
@@ -492,7 +547,7 @@ sealed class RapiSession
                 // RAPI+ expects the exchange catalog to be requested before
                 // symbol reference data, as done by Quantower's connector.
                 Invoke(engine!, "getRefData", request.Exchange, request.Symbol, new object());
-                var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20));
+                var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
                 var responseCode = ReadInt(info, "RpCode");
                 if (responseCode != 0) throw new InvalidOperationException($"Rithmic reference data rejected {request.Exchange}.{request.Symbol} (code {responseCode}).");
                 var actualSymbol = ReadString(info, "Symbol") ?? request.Symbol;
@@ -504,7 +559,13 @@ sealed class RapiSession
                     displayName = actualSymbol,
                     exchange = actualExchange,
                     assetType = "futures",
-                    pointValue = pointValue > 0 ? pointValue : (double?)null
+                    // For futures, Rithmic's SinglePointValue is the cash
+                    // value of a one-point move for one contract. Expose it
+                    // under both normalized names so chart P&L consumers can
+                    // use the contract multiplier without broker-specific
+                    // knowledge.
+                    pointValue = pointValue > 0 ? pointValue : (double?)null,
+                    contractSize = pointValue > 0 ? pointValue : (double?)null
                 });
             }
             finally
@@ -596,7 +657,7 @@ sealed class RapiSession
         try
         {
             Invoke(engine!, "getAccounts", "A");
-            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20), lifetime.Token);
             var responseCode = ReadInt(info, "RpCode");
             if (responseCode != 0)
                 throw new InvalidOperationException($"Rithmic account lookup rejected (code {responseCode}).");
@@ -635,7 +696,7 @@ sealed class RapiSession
         try
         {
             Invoke(engine!, "listTradeRoutes", new object());
-            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20), lifetime.Token);
             var responseCode = ReadInt(info, "RpCode");
             if (responseCode != 0)
                 throw new InvalidOperationException($"Rithmic trade-route lookup rejected (code {responseCode}).");
@@ -706,21 +767,53 @@ sealed class RapiSession
         state.Positions.Clear();
         state.Statistics.OpenPositions = 0;
         state.UnrealizedPnL = 0;
+        // Open-order replay is also a snapshot. Preserve only the local
+        // acknowledgement placeholders that have not received a Rithmic line
+        // update yet; otherwise a PnL refresh races a newly submitted TP/SL
+        // and removes it from the browser before its broker order number is
+        // known.
+        var provisionalOrders = state.Orders
+            .Where(item => provisionalOrderIds.Contains(item.OrderId)
+                && item.Status is "pending" or "working" or "partially-filled")
+            .ToArray();
+        state.Orders.Clear();
+        state.Orders.AddRange(provisionalOrders);
+        state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
         EnsureAccountFeeds(rawAccount, accountId);
-        var waiter = NewWaiter();
-        pnlWaiters[accountId] = waiter;
+        var pnlWaiter = NewWaiter();
+        var openOrderReplayWaiter = NewWaiter();
+        pnlWaiters[accountId] = pnlWaiter;
+        openOrderReplayWaiters[accountId] = openOrderReplayWaiter;
         try
         {
             Invoke(engine!, "replayPnl", rawAccount, new object());
-            try { await waiter.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
-            catch (TimeoutException) { }
+            Invoke(engine!, "replayOpenOrders", rawAccount, new object());
+            await Task.WhenAll(
+                WaitForAccountReplayAsync(pnlWaiter.Task, "P&L", accountId),
+                WaitForAccountReplayAsync(openOrderReplayWaiter.Task, "open-order", accountId));
         }
         finally
         {
             pnlWaiters.Remove(accountId);
+            openOrderReplayWaiters.Remove(accountId);
         }
         state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         return state;
+    }
+
+    private async Task WaitForAccountReplayAsync(Task<object?> replayTask, string description, string accountId)
+    {
+        try
+        {
+            await replayTask.WaitAsync(TimeSpan.FromSeconds(20), lifetime.Token);
+        }
+        catch (TimeoutException)
+        {
+            // Account snapshots remain useful when a broker's replay endpoint
+            // is slow. The active PnL/order subscriptions will still hydrate
+            // the state when their callbacks arrive.
+            Console.Error.WriteLine($"RAPI+ {description} replay timed out for account {accountId}; waiting for live updates.");
+        }
     }
 
     private void EnsureAccountFeeds(object rawAccount, string accountId)
@@ -770,7 +863,7 @@ sealed class RapiSession
             SetAny(parameters, "StartSsboe", start);
             SetAny(parameters, "EndSsboe", end);
             Invoke(engine!, "replayBars", parameters);
-            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(90));
+            var info = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(90), lifetime.Token);
             var responseCode = ReadInt(info, "RpCode");
             // Rithmic uses code 7 when a replay window has no older data. This
             // is a normal end-of-history condition, not a failed chart load.
@@ -805,6 +898,9 @@ sealed class RapiSession
                 break;
             case "PnlReplay":
                 ProcessPnlReplay(info);
+                break;
+            case "OpenOrderReplay":
+                ProcessOpenOrderReplay(info);
                 break;
             case "LineUpdate":
                 ProcessLineUpdate(info);
@@ -912,7 +1008,50 @@ sealed class RapiSession
             _ = SendAsync(new { type = "accountState", state });
     }
 
-    private void ProcessLineUpdate(object info)
+    private void ProcessOpenOrderReplay(object info)
+    {
+        var rawAccount = Property(info, "Account") ?? Property(info, "oAccount");
+        var accountId = ReadString(rawAccount, "AccountId")
+            ?? ReadString(rawAccount, "sAccountId")
+            ?? activeAccountId;
+        if (string.IsNullOrWhiteSpace(accountId)) return;
+
+        try
+        {
+            var responseCode = ReadInt(info, "RpCode");
+            if (responseCode != 0)
+            {
+                Console.Error.WriteLine($"RAPI+ open-order replay rejected for account {accountId} (code {responseCode}).");
+                return;
+            }
+
+            // OrderReplayInfo.Orders is a collection of LineInfo instances.
+            // Run each through the exact same normalizer used by live updates,
+            // but publish one complete account snapshot rather than a burst of
+            // individual browser messages while loading the account.
+            var orders = Property(info, "Orders") as IEnumerable;
+            if (orders is not null)
+            {
+                foreach (var order in orders.Cast<object>())
+                    ProcessLineUpdate(order, publish: false);
+            }
+
+            if (accountStates.TryGetValue(accountId, out var state))
+            {
+                state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
+                state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (accountSubscriptions.Contains(accountId))
+                    _ = SendAsync(new { type = "accountState", state });
+            }
+        }
+        finally
+        {
+            if (openOrderReplayWaiters.TryGetValue(accountId, out var waiter))
+                waiter.TrySetResult(info);
+        }
+    }
+
+    private void ProcessLineUpdate(object info, bool publish = true)
     {
         var rawAccount = Property(info, "Account") ?? Property(info, "oAccount");
         var accountId = ReadString(rawAccount, "AccountId")
@@ -924,11 +1063,41 @@ sealed class RapiSession
         var symbol = ReadString(info, "Symbol") ?? ReadString(info, "Ticker") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(symbol)) return;
 
+        var clientOrderId = ReadString(info, "UserMsg");
+        if (string.IsNullOrWhiteSpace(clientOrderId))
+        {
+            var tag = ReadString(info, "Tag");
+            clientOrderId = tag?.StartsWith("openbacktest-", StringComparison.OrdinalIgnoreCase) == true ? tag : null;
+        }
+        var state = accountStates.TryGetValue(accountId, out var existing)
+            ? existing
+            : new GatewayAccountState { Account = accounts[accountId] };
+        accountStates[accountId] = state;
+        var existingOrder = state.Orders.FindIndex(item =>
+            item.OrderId.Equals(orderId, StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(clientOrderId)
+                && string.Equals(item.ClientOrderId, clientOrderId, StringComparison.OrdinalIgnoreCase)));
+        var previous = existingOrder >= 0 ? state.Orders[existingOrder] : null;
+
         var rawStatus = ReadString(info, "Status") ?? string.Empty;
         var completion = ReadString(info, "CompletionReason") ?? string.Empty;
-        var isCancelled = rawStatus.Contains("cancel", StringComparison.OrdinalIgnoreCase) || completion.Contains("cancel", StringComparison.OrdinalIgnoreCase) || completion.Equals("C", StringComparison.OrdinalIgnoreCase);
-        var isRejected = rawStatus.Contains("reject", StringComparison.OrdinalIgnoreCase) || completion.Contains("reject", StringComparison.OrdinalIgnoreCase) || completion.Equals("R", StringComparison.OrdinalIgnoreCase);
-        var isFilled = (rawStatus.Contains("complete", StringComparison.OrdinalIgnoreCase) && completion.Contains("fill", StringComparison.OrdinalIgnoreCase)) || completion.Equals("F", StringComparison.OrdinalIgnoreCase);
+        var statusCode = NormalizeRithmicCode(rawStatus);
+        var completionCode = NormalizeRithmicCode(completion);
+        var isCancelled = statusCode.Contains("CANCEL", StringComparison.Ordinal)
+            || statusCode == "C"
+            || completionCode.Contains("CANCEL", StringComparison.Ordinal)
+            || completionCode == "C";
+        var isRejected = statusCode.Contains("REJECT", StringComparison.Ordinal)
+            || completionCode.Contains("REJECT", StringComparison.Ordinal)
+            || completionCode == "R";
+        // RAPI+ uses FA/PFBC as terminal completion reasons in addition to F.
+        // Treat them as filled/complete so old orders do not remain rendered
+        // as a working TP or SL after the broker has finished them.
+        var isFilled = statusCode.Contains("FILLED", StringComparison.Ordinal)
+            || statusCode is "F" or "FA" or "PFBC"
+            || completionCode is "F" or "FA" or "PFBC"
+            || (statusCode.Contains("COMPLETE", StringComparison.Ordinal)
+                && completionCode.Contains("FILL", StringComparison.Ordinal));
         var status = isCancelled
             ? "cancelled"
             : isRejected
@@ -936,35 +1105,33 @@ sealed class RapiSession
                 : isFilled
                     ? "filled"
                     : "working";
-        var side = (ReadString(info, "BuySellType") ?? "B").Equals("S", StringComparison.OrdinalIgnoreCase) ? "sell" : "buy";
-        var filledQuantity = FirstDouble(info, "Filled", "TotalFilled") ?? 0;
-        var quantityToFill = FirstDouble(info, "QuantityToFill");
-        var clientOrderId = ReadString(info, "UserMsg");
-        if (string.IsNullOrWhiteSpace(clientOrderId))
-        {
-            var tag = ReadString(info, "Tag");
-            clientOrderId = tag?.StartsWith("openbacktest-", StringComparison.OrdinalIgnoreCase) == true ? tag : null;
-        }
-        var quantity = FirstDouble(info, "Quantity", "MaxShowQty")
-            ?? (quantityToFill.HasValue ? Math.Max(quantityToFill.Value + filledQuantity, filledQuantity) : 0);
+        var filledQuantity = FirstPositiveDouble(info, "Filled", "TotalFilled") ?? 0;
+        // LineInfo does not expose a generic Quantity field. Its order size is
+        // the already-filled amount plus QuantityToFill/Unfilled; MaxShowQty
+        // is only an iceberg display quantity and must not take precedence.
+        var remainingQuantity = FirstPositiveDouble(info, "QuantityToFill", "Unfilled") ?? 0;
+        var quantity = filledQuantity + remainingQuantity;
+        if (quantity <= 0)
+            quantity = FirstPositiveDouble(info, "Quantity", "OrderQuantity", "MaxShowQty") ?? 0;
         if (quantity <= 0 && clientOrderId is not null && pendingOrderQuantities.TryGetValue(clientOrderId, out var requestedQuantity))
             quantity = requestedQuantity;
-        if (!isCancelled && !isRejected && !isFilled && filledQuantity > 0 && quantity > filledQuantity)
+        if (quantity <= 0) quantity = previous?.Quantity ?? 0;
+        if (!isCancelled && !isRejected && !isFilled && filledQuantity > 0 && remainingQuantity > 0)
             status = "partially-filled";
+
+        var orderDetails = NormalizeRithmicOrderType(info);
+        var orderType = orderDetails.OrderType;
+        var limitPrice = orderDetails.LimitPrice;
+        var stopPrice = orderDetails.StopPrice;
+        if (previous is not null)
+        {
+            if (!orderDetails.HasOrderTypeHint && previous.OrderType != "market") orderType = previous.OrderType;
+            limitPrice ??= previous.LimitPrice;
+            stopPrice ??= previous.StopPrice;
+        }
+        var side = NormalizeRithmicSide(ReadString(info, "BuySellType")) ?? previous?.Side ?? "buy";
         var exchange = ReadString(info, "Exchange");
         var rejectReason = isRejected ? ReadString(info, "Text") ?? ReadString(info, "Remarks") : null;
-        var rawOrderType = ReadString(info, "OrderType") ?? "M";
-        var isStop = rawOrderType.Equals("S", StringComparison.OrdinalIgnoreCase)
-            || rawOrderType.Contains("stop", StringComparison.OrdinalIgnoreCase);
-        var isLimit = rawOrderType.Equals("L", StringComparison.OrdinalIgnoreCase)
-            || rawOrderType.Contains("limit", StringComparison.OrdinalIgnoreCase);
-        var orderType = isStop ? (isLimit ? "stop-limit" : "stop") : (isLimit ? "limit" : "market");
-        var limitPrice = isLimit ? FirstDouble(info, "PriceToFill", "Price") : null;
-        var stopPrice = isStop ? FirstDouble(info, "TriggerPrice", "StopPrice", "PriceToStop") : null;
-        var state = accountStates.TryGetValue(accountId, out var existing)
-            ? existing
-            : new GatewayAccountState { Account = accounts[accountId] };
-        accountStates[accountId] = state;
         var order = new GatewayOrder
         {
             OrderId = orderId,
@@ -980,14 +1147,26 @@ sealed class RapiSession
             RejectReason = rejectReason,
             ClientOrderId = clientOrderId
         };
-        var existingOrder = state.Orders.FindIndex(item => item.OrderId.Equals(orderId, StringComparison.OrdinalIgnoreCase));
-        if (existingOrder >= 0) state.Orders[existingOrder] = order;
+        // An open-order replay can race a later live terminal LineUpdate. Do
+        // not let the older replay resurrect a broker-confirmed closed order.
+        if (!publish && previous is not null
+            && previous.Status is "cancelled" or "rejected" or "filled"
+            && status is "pending" or "working" or "partially-filled")
+        {
+            return;
+        }
+        if (existingOrder >= 0)
+        {
+            provisionalOrderIds.Remove(state.Orders[existingOrder].OrderId);
+            state.Orders[existingOrder] = order;
+        }
         else state.Orders.Add(order);
+        provisionalOrderIds.Remove(orderId);
         state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
         state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         Console.WriteLine($"RAPI+ line {orderId} {order.Status} {side} {quantity:0.####}/{filledQuantity:0.####} {order.Symbol}{(string.IsNullOrWhiteSpace(rejectReason) ? string.Empty : $" reason={rejectReason}")}");
 
-        _ = SendAsync(new
+        if (publish) _ = SendAsync(new
         {
             type = "orderUpdate",
             update = new
@@ -1007,7 +1186,7 @@ sealed class RapiSession
                 clientOrderId
             }
         });
-        if (clientOrderId is not null && orderWaiters.TryGetValue(clientOrderId, out var waiter))
+        if (publish && clientOrderId is not null && orderWaiters.TryGetValue(clientOrderId, out var waiter))
         {
             waiter.TrySetResult(new
             {
@@ -1026,7 +1205,7 @@ sealed class RapiSession
                 clientOrderId
             });
         }
-        if (accountSubscriptions.Contains(accountId)) _ = SendAsync(new { type = "accountState", state });
+        if (publish && accountSubscriptions.Contains(accountId)) _ = SendAsync(new { type = "accountState", state });
     }
 
     private void ProcessFillReport(object info)
@@ -1041,7 +1220,7 @@ sealed class RapiSession
         var price = FirstDouble(info, "FillPrice", "AverageFillPrice") ?? 0;
         if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(symbol) || quantity <= 0 || price <= 0) return;
 
-        var side = (ReadString(info, "BuySellType") ?? ReadString(info, "FillSide") ?? "B").Equals("S", StringComparison.OrdinalIgnoreCase) ? "sell" : "buy";
+        var side = NormalizeRithmicSide(ReadString(info, "BuySellType") ?? ReadString(info, "FillSide")) ?? "buy";
         var commission = FirstDouble(info, "Commission", "Commissions", "Fee", "Fees");
         _ = SendAsync(new
         {
@@ -1118,9 +1297,25 @@ sealed class RapiSession
         SetAny(parameters, "TradingAlgorithm", "OpenBackTest");
         SetAny(parameters, "UserMsg", clientOrderId);
 
+        var fallbackOrderId = ReadString(parameters, "OrderNum")
+            ?? ReadString(parameters, "OrderNumber")
+            ?? $"rithmic-{Guid.NewGuid():N}";
+        var fallbackOrder = new GatewayOrder
+        {
+            OrderId = fallbackOrderId,
+            Symbol = Qualify(parsed.Symbol, parsed.Exchange),
+            Side = side == "B" ? "buy" : "sell",
+            Quantity = quantity,
+            OrderType = orderType,
+            Status = "working",
+            FilledQuantity = 0,
+            LimitPrice = orderType is "limit" or "stop-limit" ? limitPrice : null,
+            StopPrice = orderType is "stop" or "stop-limit" ? stopPrice : null,
+            ClientOrderId = clientOrderId,
+        };
         var fallbackUpdate = new
         {
-            orderId = ReadString(parameters, "OrderNum") ?? ReadString(parameters, "OrderNumber") ?? $"rithmic-{Guid.NewGuid():N}",
+            orderId = fallbackOrderId,
             accountId,
             symbol,
             side = side == "B" ? "buy" : "sell",
@@ -1143,13 +1338,14 @@ sealed class RapiSession
             Invoke(engine!, "sendOrder", parameters);
             try
             {
-                var update = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                var update = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(15), lifetime.Token);
                 if (update is not null) return update;
             }
             catch (TimeoutException)
             {
                 Console.Error.WriteLine($"RAPI+ order acknowledgement timed out for {clientOrderId}; continuing to stream line updates.");
             }
+            AddProvisionalOrder(accountId, fallbackOrder);
             return fallbackUpdate;
         }
         finally
@@ -1159,6 +1355,25 @@ sealed class RapiSession
         }
     }
 
+    private void AddProvisionalOrder(string accountId, GatewayOrder order)
+    {
+        if (!accounts.TryGetValue(accountId, out var account)) return;
+        var state = accountStates.TryGetValue(accountId, out var existing)
+            ? existing
+            : new GatewayAccountState { Account = account };
+        accountStates[accountId] = state;
+        var existingOrder = state.Orders.FindIndex(item =>
+            item.OrderId.Equals(order.OrderId, StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(order.ClientOrderId)
+                && string.Equals(item.ClientOrderId, order.ClientOrderId, StringComparison.OrdinalIgnoreCase)));
+        if (existingOrder >= 0) state.Orders[existingOrder] = order;
+        else state.Orders.Add(order);
+        provisionalOrderIds.Add(order.OrderId);
+        state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
+        state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (accountSubscriptions.Contains(accountId)) _ = SendAsync(new { type = "accountState", state });
+    }
+
     private async Task<object> CancelOrderAsync(string? orderId)
     {
         if (string.IsNullOrWhiteSpace(orderId)) throw new InvalidOperationException("An orderId is required.");
@@ -1166,9 +1381,18 @@ sealed class RapiSession
         if (activeAccountId is null || !accountHandles.TryGetValue(activeAccountId, out var rawAccount))
             throw new InvalidOperationException("Select a trading account before cancelling an order.");
         Invoke(engine!, "cancelOrder", rawAccount, orderId, "M", "OpenBackTest", "", "OpenBackTest", new object());
-        var existing = accountStates.TryGetValue(activeAccountId, out var state)
-            ? state.Orders.FirstOrDefault(item => item.OrderId.Equals(orderId, StringComparison.OrdinalIgnoreCase))
-            : null;
+        GatewayOrder? existing = null;
+        if (accountStates.TryGetValue(activeAccountId, out var state))
+        {
+            existing = state.Orders.FirstOrDefault(item => item.OrderId.Equals(orderId, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                existing.Status = "cancelled";
+                provisionalOrderIds.Remove(existing.OrderId);
+                state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
+                state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            }
+        }
         return new
         {
             orderId,
@@ -1191,6 +1415,24 @@ sealed class RapiSession
         if (activeAccountId is null || !accountHandles.TryGetValue(activeAccountId, out var rawAccount))
             throw new InvalidOperationException("Select a trading account before cancelling orders.");
         Invoke(engine!, "cancelAllOrders", rawAccount, "M", "OpenBackTest", "OpenBackTest");
+        if (!accountStates.TryGetValue(activeAccountId, out var state)) return;
+
+        string? qualifiedSymbol = null;
+        if (!string.IsNullOrWhiteSpace(symbol))
+        {
+            var parsed = ParseSymbol(symbol);
+            qualifiedSymbol = Qualify(parsed.Symbol, parsed.Exchange);
+        }
+        foreach (var order in state.Orders.Where(item =>
+                     item.Status is "pending" or "working" or "partially-filled"
+                     && (qualifiedSymbol is null || item.Symbol.Equals(qualifiedSymbol, StringComparison.OrdinalIgnoreCase))))
+        {
+            order.Status = "cancelled";
+            provisionalOrderIds.Remove(order.OrderId);
+        }
+        state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
+        state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (accountSubscriptions.Contains(activeAccountId)) _ = SendAsync(new { type = "accountState", state });
     }
 
     private async Task FlattenAsync(string? symbol)
@@ -1211,13 +1453,14 @@ sealed class RapiSession
                          && item.Status is "pending" or "working" or "partially-filled"))
             {
                 order.Status = "cancelled";
+                provisionalOrderIds.Remove(order.OrderId);
             }
             state.Statistics.WorkingOrders = state.Orders.Count(item => item.Status is "working" or "partially-filled");
             state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (accountSubscriptions.Contains(activeAccountId))
                 _ = SendAsync(new { type = "accountState", state });
         }
-        await Task.Delay(250);
+        await Task.Delay(250, lifetime.Token);
         Invoke(engine!, "exitPosition", rawAccount, parsed.Exchange, parsed.Symbol, "M", "OpenBackTest", "OpenBackTest", "", "OpenBackTest", new object());
     }
 
@@ -1282,22 +1525,29 @@ sealed class RapiSession
         }
     }
 
-    private async Task WaitForStateAsync(string property, string operation, TimeSpan timeout)
+    private async Task WaitForStateAsync(string property, string operation, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var state = ReadString(engine, property) ?? string.Empty;
             if (state.Equals("LoggedIn", StringComparison.OrdinalIgnoreCase)) return;
-            await Task.Delay(500);
+            await Task.Delay(500, cancellationToken);
         }
         throw new TimeoutException($"Rithmic {operation} timed out (state: {ReadString(engine, property) ?? "unknown"}).");
     }
 
     private async Task CloseAsync()
     {
-        if (closed) return;
-        closed = true;
+        if (Interlocked.Exchange(ref closeStarted, 1) != 0) return;
+        lifetime.Cancel();
+        incoming.Writer.TryComplete();
+        if (receivePump is not null)
+        {
+            try { await receivePump; }
+            catch { }
+        }
         try
         {
             foreach (var qualified in subscriptions.ToArray())
@@ -1323,34 +1573,91 @@ sealed class RapiSession
         }
         finally
         {
-            CallbackRelay.Clear();
             accountSubscriptions.Clear();
             foreach (var waiter in orderWaiters.Values) waiter.TrySetResult(null);
             orderWaiters.Clear();
             pendingOrderQuantities.Clear();
+            await sendGate.WaitAsync();
+            try { await CloseBrowserAsync(); }
+            finally { sendGate.Release(); }
+        }
+    }
+
+    private async Task CloseBrowserAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
             if (browser.State == WebSocketState.Open)
             {
-                try { await browser.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", CancellationToken.None); }
+                await browser.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", timeout.Token);
+            }
+            else if (browser.State == WebSocketState.CloseReceived)
+            {
+                await browser.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "closed", timeout.Token);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (WebSocketException) { }
+        finally
+        {
+            if (browser.State != WebSocketState.Closed)
+            {
+                try { browser.Abort(); }
                 catch { }
             }
+            browser.Dispose();
         }
     }
 
     private async Task SendErrorAsync(string message, string? requestId)
     {
-        if (browser.State != WebSocketState.Open) return;
+        if (browser.State != WebSocketState.Open || IsClosing) return;
         await SendAsync(new { type = "error", requestId, message });
     }
 
     private async Task SendAsync(object payload)
     {
-        if (browser.State != WebSocketState.Open || closed) return;
+        if (browser.State != WebSocketState.Open || IsClosing) return;
         var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, serializerOptions);
-        await sendGate.WaitAsync();
         try
         {
-            if (browser.State == WebSocketState.Open)
-                await browser.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+            await sendGate.WaitAsync(lifetime.Token);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            return;
+        }
+        try
+        {
+            if (browser.State == WebSocketState.Open && !IsClosing)
+                await browser.SendAsync(bytes, WebSocketMessageType.Text, true, lifetime.Token);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // A callback raced with browser/session teardown.
+        }
+        catch (WebSocketException exception)
+        {
+            // A send can discover a dead peer before State reflects it. This
+            // method is also called fire-and-forget by RAPI+ callbacks, so
+            // consume the terminal transport error and tear the session down
+            // instead of leaving an unobserved callback task behind.
+            if (!IsClosing)
+            {
+                Console.Error.WriteLine($"gateway client send ended: {exception.Message}");
+                lifetime.Cancel();
+            }
+        }
+        catch (ObjectDisposedException exception)
+        {
+            // Treat a disposed transport exactly like a failed send. This can
+            // race the close path or an abrupt peer disconnect.
+            if (!IsClosing)
+            {
+                Console.Error.WriteLine($"gateway client send ended: {exception.Message}");
+                lifetime.Cancel();
+            }
         }
         finally
         {
@@ -1358,11 +1665,12 @@ sealed class RapiSession
         }
     }
 
-    private async Task<JsonElement?> ReceiveAsync(TimeSpan timeout)
+    private bool IsClosing => Volatile.Read(ref closeStarted) != 0 || lifetime.IsCancellationRequested;
+
+    private async Task<JsonElement?> ReceiveAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
-        using var cancellation = timeout == Timeout.InfiniteTimeSpan
-            ? new CancellationTokenSource()
-            : new CancellationTokenSource(timeout);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (timeout != Timeout.InfiniteTimeSpan) cancellation.CancelAfter(timeout);
         var buffer = new byte[8192];
         using var message = new MemoryStream();
         WebSocketReceiveResult result;
@@ -1457,6 +1765,50 @@ sealed class RapiSession
             || value.Equals("y", StringComparison.OrdinalIgnoreCase)
             || value.Equals("1", StringComparison.OrdinalIgnoreCase));
 
+    private static string NormalizeRithmicCode(string? value)
+        => string.Concat((value ?? string.Empty).Where(char.IsLetterOrDigit)).ToUpperInvariant();
+
+    private static string? NormalizeRithmicSide(string? value)
+    {
+        var code = NormalizeRithmicCode(value);
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        // RAPI+ reports sells as S, SS, or SSE depending on the order's
+        // position effect. All of those must remain SELL for protective-order
+        // classification against a live long position.
+        if (code.StartsWith("S", StringComparison.Ordinal) || code.Contains("SELL", StringComparison.Ordinal)) return "sell";
+        if (code.StartsWith("B", StringComparison.Ordinal) || code.Contains("BUY", StringComparison.Ordinal)) return "buy";
+        return null;
+    }
+
+    private static (string OrderType, double? LimitPrice, double? StopPrice, bool HasOrderTypeHint) NormalizeRithmicOrderType(object info)
+    {
+        var codes = new[]
+        {
+            ReadString(info, "OrderType"),
+            ReadString(info, "OriginalOrderType"),
+            ReadString(info, "EntryType"),
+        }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(NormalizeRithmicCode)
+            .ToArray();
+        var hasOrderTypeHint = codes.Length > 0;
+        var isStopLimit = codes.Any(code => code is "SLMT" or "STOPLIMIT" || code.Contains("STOPLIMIT", StringComparison.Ordinal));
+        var isStop = isStopLimit
+            || codes.Any(code => code is "STP" or "S" or "STOP" || code.Contains("STOP", StringComparison.Ordinal));
+        var isLimit = isStopLimit
+            || codes.Any(code => code is "L" or "LIMIT" || code.Contains("LIMIT", StringComparison.Ordinal));
+        var limitPrice = FirstPositiveDouble(info, "PriceToFill", "Price", "LimitPrice");
+        var stopPrice = FirstPositiveDouble(info, "TriggerPrice", "StopPrice", "PriceToStop");
+
+        // The RAPI constants are M, L, STP, and SLMT. EntryType S may carry
+        // the stop signal while OrderType carries L, so consider all fields
+        // together before choosing the browser's normalized order type.
+        if (isStop && isLimit) return ("stop-limit", limitPrice, stopPrice, hasOrderTypeHint);
+        if (isStop) return ("stop", null, stopPrice ?? limitPrice, hasOrderTypeHint);
+        if (isLimit) return ("limit", limitPrice, null, hasOrderTypeHint);
+        return ("market", null, null, hasOrderTypeHint);
+    }
+
     private static double ReadDouble(JsonElement element, string property)
     {
         if (!element.TryGetProperty(property, out var value)) return 0;
@@ -1472,6 +1824,16 @@ sealed class RapiSession
             if (value is null) continue;
             if (value is double number && double.IsFinite(number)) return number;
             if (double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out number) && double.IsFinite(number)) return number;
+        }
+        return null;
+    }
+
+    private static double? FirstPositiveDouble(object target, params string[] properties)
+    {
+        foreach (var property in properties)
+        {
+            var value = FirstDouble(target, property);
+            if (value is > 0) return value;
         }
         return null;
     }

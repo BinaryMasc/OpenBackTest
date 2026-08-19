@@ -1,6 +1,34 @@
 import { registerOverlay } from 'klinecharts';
 import type { OverlayFigure, OverlayCreateFiguresCallbackParams } from 'klinecharts';
 
+const OVERLAY_LABEL_BACKGROUND = '#0f172a';
+const OVERLAY_LABEL_TEXT = '#f8fafc';
+
+function highContrastLabelStyles(accentColor: string, size: number, padding = 4) {
+  return {
+    style: 'stroke_fill',
+    color: OVERLAY_LABEL_TEXT,
+    size,
+    weight: '600',
+    backgroundColor: OVERLAY_LABEL_BACKGROUND,
+    borderColor: accentColor,
+    borderSize: 1,
+    paddingLeft: padding + 1,
+    paddingRight: padding + 1,
+    paddingTop: padding,
+    paddingBottom: padding,
+    borderRadius: 4,
+  };
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function formatTradePrice(value: number, precision: number): string {
+  return value.toFixed(Math.max(0, precision));
+}
+
 export function registerCustomOverlays(): void {
   registerOverlay({
     name: 'rect',
@@ -187,16 +215,8 @@ export function registerCustomOverlays(): void {
             align: 'left',
             baseline: 'bottom',
           },
-          styles: {
-            color: '#fff',
-            size: 12,
-            backgroundColor: color,
-            paddingLeft: 6,
-            paddingRight: 6,
-            paddingTop: 4,
-            paddingBottom: 4,
-            borderRadius: 4
-          },
+          // A dark backing keeps the label legible on bright green/red position colors.
+          styles: highContrastLabelStyles(color, 12, 5),
         },
       ];
     },
@@ -229,16 +249,7 @@ export function registerCustomOverlays(): void {
         {
           type: 'text',
           attrs: { x: 10, y: y - 10, text, align: 'left', baseline: 'bottom' },
-          styles: {
-            color: '#fff',
-            size: 11,
-            backgroundColor: color,
-            paddingLeft: 5,
-            paddingRight: 5,
-            paddingTop: 3,
-            paddingBottom: 3,
-            borderRadius: 3,
-          },
+          styles: highContrastLabelStyles(color, 11, 4),
         },
       ];
     },
@@ -264,7 +275,7 @@ export function registerCustomOverlays(): void {
         {
           type: 'text',
           attrs: { x: 10, y: y - 10, text, align: 'left', baseline: 'bottom' },
-          styles: { color: '#fff', size: 13, backgroundColor: color, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 },
+          styles: highContrastLabelStyles(color, 13, 3),
         },
       ];
     },
@@ -290,7 +301,7 @@ export function registerCustomOverlays(): void {
         {
           type: 'text',
           attrs: { x: 10, y: y - 10, text, align: 'left', baseline: 'bottom' },
-          styles: { color: '#fff', size: 11, backgroundColor: color, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 },
+          styles: highContrastLabelStyles(color, 11, 3),
         },
       ];
     },
@@ -391,6 +402,131 @@ export function registerCustomOverlays(): void {
           borderRadius: 4
         },
       });
+
+      return figures;
+    },
+  });
+
+  registerOverlay({
+    name: 'trade',
+    // Click entry, target, then stop. The green/red zones deliberately use
+    // fixed semantic colors instead of the generic drawing color.
+    // KlineCharts completes an overlay at totalStep - 1 points.
+    totalStep: 4,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, overlay, precision }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+      if (coordinates.length < 2) return [];
+
+      const [entry, target, stop] = coordinates;
+      const startX = Math.min(entry.x, target.x, stop?.x ?? target.x);
+      const endX = Math.max(entry.x, target.x, stop?.x ?? target.x, startX + 8);
+      const centerX = (startX + endX) / 2;
+
+      const entryValue = overlay.points[0]?.value;
+      const targetValue = overlay.points[1]?.value;
+      const stopValue = overlay.points[2]?.value;
+      const hasEntryAndTarget = isFiniteNumber(entryValue) && isFiniteNumber(targetValue);
+      const hasStop = isFiniteNumber(stopValue);
+      const pricePrecision = precision?.price ?? 2;
+      const isLong = hasEntryAndTarget ? targetValue > entryValue : true;
+      const direction = isLong ? 'LONG' : 'SHORT';
+      const reward = hasEntryAndTarget ? Math.abs(targetValue - entryValue) : 0;
+      const risk = hasEntryAndTarget && hasStop ? Math.abs(stopValue - entryValue) : 0;
+      const targetPercent = hasEntryAndTarget && entryValue !== 0
+        ? (reward / Math.abs(entryValue)) * 100
+        : 0;
+      const stopPercent = hasEntryAndTarget && hasStop && entryValue !== 0
+        ? (risk / Math.abs(entryValue)) * 100
+        : 0;
+      const rewardText = hasEntryAndTarget
+        ? `Target +${formatTradePrice(reward, pricePrecision)} (+${targetPercent.toFixed(2)}%)`
+        : 'Target';
+      const riskText = hasEntryAndTarget && hasStop
+        ? `Stop -${formatTradePrice(risk, pricePrecision)} (-${stopPercent.toFixed(2)}%)`
+        : 'Stop';
+      const entryText = hasEntryAndTarget
+        ? `${direction} · Entry ${formatTradePrice(entryValue, pricePrecision)}${risk > 0 ? ` · R:R ${(reward / risk).toFixed(2)}` : ''}`
+        : 'Entry';
+
+      const figures: OverlayFigure[] = [
+        {
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: startX, y: entry.y },
+              { x: endX, y: entry.y },
+              { x: endX, y: target.y },
+              { x: startX, y: target.y },
+            ],
+          },
+          styles: {
+            style: 'stroke_fill',
+            color: 'rgba(34, 197, 94, 0.24)',
+            borderColor: '#22c55e',
+            borderSize: 1,
+          },
+        },
+        {
+          type: 'line',
+          attrs: { coordinates: [{ x: startX, y: entry.y }, { x: endX, y: entry.y }] },
+          styles: { color: '#e2e8f0', size: 1, style: 'solid' },
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: startX + 6,
+            y: entry.y - 6,
+            text: entryText,
+            align: 'left',
+            baseline: 'bottom',
+          },
+          styles: highContrastLabelStyles(isLong ? '#22c55e' : '#ef4444', 11, 3),
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: centerX,
+            y: (entry.y + target.y) / 2,
+            text: rewardText,
+            align: 'center',
+            baseline: 'middle',
+          },
+          styles: highContrastLabelStyles('#22c55e', 11, 3),
+        },
+      ];
+
+      if (stop) {
+        figures.splice(1, 0, {
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: startX, y: entry.y },
+              { x: endX, y: entry.y },
+              { x: endX, y: stop.y },
+              { x: startX, y: stop.y },
+            ],
+          },
+          styles: {
+            style: 'stroke_fill',
+            color: 'rgba(239, 68, 68, 0.24)',
+            borderColor: '#ef4444',
+            borderSize: 1,
+          },
+        });
+        figures.push({
+          type: 'text',
+          attrs: {
+            x: centerX,
+            y: (entry.y + stop.y) / 2,
+            text: riskText,
+            align: 'center',
+            baseline: 'middle',
+          },
+          styles: highContrastLabelStyles('#ef4444', 11, 3),
+        });
+      }
 
       return figures;
     },

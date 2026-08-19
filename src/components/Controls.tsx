@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud, Activity, Zap, ShieldCheck } from 'lucide-react';
+import { Upload, Loader, StepForward, PlayCircle, TrendingUp, ChevronDown, Download, UploadCloud, Activity, Zap, ShieldCheck, Menu, X } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import type { Candle } from '../types';
@@ -46,6 +46,7 @@ export function Controls() {
   const [isPresetsExpanded, setIsPresetsExpanded] = useState(true);
   const [isSessionExpanded, setIsSessionExpanded] = useState(false);
   const [isRithmicDialogOpen, setIsRithmicDialogOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [rithmicCredentials, setRithmicCredentials] = useState<RithmicCredentials>({
     username: '',
     password: '',
@@ -54,6 +55,13 @@ export function Controls() {
   const [rememberRithmicCredentials, setRememberRithmicCredentials] = useState(true);
 
   const isRithmicConnected = sourceId === RITHMIC_SOURCE_ID && isConnected;
+
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
+  const handleModeChange = (nextMode: typeof mode) => {
+    setMode(nextMode);
+    closeMobileMenu();
+  };
 
   const updateRithmicCredential = (field: keyof RithmicCredentials, value: string) => {
     setRithmicCredentials(current => ({ ...current, [field]: value }));
@@ -78,6 +86,13 @@ export function Controls() {
     }
   };
 
+  const handleRithmicDialogClose = () => {
+    if (isMarketDataLoading && sourceId === RITHMIC_SOURCE_ID) {
+      disconnectSource();
+    }
+    setIsRithmicDialogOpen(false);
+  };
+
   const handleDefaultConnect = async () => {
     await connectDefaultSource();
     if (useMarketDataStore.getState().isConnected) setIsPresetsExpanded(false);
@@ -97,6 +112,17 @@ export function Controls() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMobileMenu();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen]);
 
   // Auto-play logic
   useEffect(() => {
@@ -290,7 +316,32 @@ export function Controls() {
   const showFileDataControls = !isLiveMode;
 
   return (
-    <div className="flex flex-col h-full bg-dark-800 border-r border-dark-700 w-80 p-6 shadow-xl z-10 text-sm">
+    <>
+      <button
+        type="button"
+        onClick={() => setIsMobileMenuOpen(open => !open)}
+        className="fixed top-3 left-3 z-[120] flex h-10 w-10 items-center justify-center rounded-lg border border-dark-700 bg-dark-800 text-slate-200 shadow-lg transition-colors hover:bg-dark-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 md:hidden"
+        aria-controls="trading-controls-sidebar"
+        aria-expanded={isMobileMenuOpen}
+        aria-label={isMobileMenuOpen ? 'Close trading controls menu' : 'Open trading controls menu'}
+      >
+        {isMobileMenuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+      </button>
+
+      <button
+        type="button"
+        onClick={closeMobileMenu}
+        className={`fixed inset-0 z-[110] bg-black/60 transition-opacity duration-200 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+        aria-label="Close menu by clicking outside"
+        aria-hidden={!isMobileMenuOpen}
+        tabIndex={isMobileMenuOpen ? 0 : -1}
+      />
+
+      <aside
+        id="trading-controls-sidebar"
+        aria-label="Trading controls"
+        className={`fixed inset-y-0 left-0 z-[115] flex h-full w-80 max-w-[calc(100vw-3.5rem)] flex-col overflow-y-auto border-r border-dark-700 bg-dark-800 p-6 pt-16 text-sm shadow-xl transition-transform duration-200 ease-out ${isMobileMenuOpen ? 'visible translate-x-0' : 'invisible pointer-events-none -translate-x-full'} md:static md:z-10 md:w-80 md:max-w-none md:translate-x-0 md:visible md:pointer-events-auto md:overflow-hidden md:pt-6 md:shadow-xl`}
+      >
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <img src={`${import.meta.env.BASE_URL}icon.png`} alt="OpenBackTest Logo" className="w-12 h-12 object-contain" />
@@ -319,13 +370,13 @@ export function Controls() {
       </div>
 
       {/* Scrollable Middle Section */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4 -mr-2">
+      <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4 -mr-2">
         {/* Mode Selector */}
         <div className="mb-6 space-y-2">
           <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">Mode</h3>
           <div className="flex bg-dark-900 p-1 rounded-xl border border-dark-700">
             <button
-              onClick={() => setMode('playback')}
+              onClick={() => handleModeChange('playback')}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'playback'
                 ? 'bg-primary-500 text-white shadow-lg'
                 : 'text-slate-400 hover:text-slate-200'
@@ -335,7 +386,7 @@ export function Controls() {
               Playback
             </button>
             <button
-              onClick={() => setMode('simulation')}
+              onClick={() => handleModeChange('simulation')}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'simulation'
                 ? 'bg-emerald-600 text-white shadow-lg'
                 : 'text-slate-400 hover:text-slate-200'
@@ -345,7 +396,7 @@ export function Controls() {
               Simulation
             </button>
             <button
-              onClick={() => setMode('live')}
+              onClick={() => handleModeChange('live')}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${mode === 'live'
                 ? 'bg-amber-600 text-white shadow-lg'
                 : 'text-slate-400 hover:text-slate-200'
@@ -459,7 +510,10 @@ export function Controls() {
 
               {!isRithmicConnected && (
                 <button
-                  onClick={() => setIsRithmicDialogOpen(true)}
+                  onClick={() => {
+                    setIsRithmicDialogOpen(true);
+                    closeMobileMenu();
+                  }}
                   disabled={isUploading || isMarketDataLoading}
                   className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-lg transition-colors border border-slate-600/50 bg-dark-700 hover:bg-dark-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -585,6 +639,8 @@ export function Controls() {
 
       </div>
 
+      </aside>
+
       <RithmicConnectionDialog
         isOpen={isRithmicDialogOpen}
         isLoading={isMarketDataLoading && sourceId === RITHMIC_SOURCE_ID}
@@ -594,8 +650,8 @@ export function Controls() {
         onCredentialsChange={updateRithmicCredential}
         onRememberCredentialsChange={handleRememberRithmicCredentialsChange}
         onConnect={handleRithmicConnect}
-        onClose={() => setIsRithmicDialogOpen(false)}
+        onClose={handleRithmicDialogClose}
       />
-    </div>
+    </>
   );
 }

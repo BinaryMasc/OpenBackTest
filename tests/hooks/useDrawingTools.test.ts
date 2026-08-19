@@ -89,6 +89,28 @@ describe('useDrawingTools', () => {
     expect(result.current.activeTool).toBeNull();
   });
 
+  it('creates the three-click trade-position overlay', () => {
+    const { result } = renderHook(() => useDrawingTools({
+      chartRef,
+      containerRef,
+      overlayColor: '#ffffff',
+      overlayOpacity: 1,
+      overlayFontSize: 12,
+      onOverlayCreated,
+      onOverlaySelected,
+    }));
+
+    act(() => {
+      result.current.handleToolClick('trade');
+    });
+
+    expect(result.current.activeTool).toBe('trade');
+    expect(mockChart.createOverlay).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'trade',
+      groupId: 'drawing_group',
+    }));
+  });
+
   it('should bind mouse events for pencil tool', () => {
     const { result } = renderHook(() => useDrawingTools({
       chartRef,

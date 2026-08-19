@@ -8,6 +8,11 @@ export interface MarketDataSubscription {
 export interface MarketDataConnectionOptions {
   credentials?: Record<string, string>;
   settings?: Record<string, string | number | boolean>;
+  /**
+   * Cancels a connection attempt that has not produced a connection yet.
+   * Established connections continue to use their own `close` method.
+   */
+  signal?: AbortSignal;
 }
 
 /**

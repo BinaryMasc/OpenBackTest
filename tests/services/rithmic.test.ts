@@ -94,10 +94,64 @@ class FakeWebSocket {
   }
 }
 
+class ManualWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  static instances: ManualWebSocket[] = [];
+
+  readonly sent: string[] = [];
+  readonly url: string;
+  readyState = ManualWebSocket.CONNECTING;
+  closeCalls = 0;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+    ManualWebSocket.instances.push(this);
+    queueMicrotask(() => {
+      if (this.readyState !== ManualWebSocket.CONNECTING) return;
+      this.readyState = ManualWebSocket.OPEN;
+      this.onopen?.(new Event('open'));
+    });
+  }
+
+  send(payload: string) {
+    this.sent.push(payload);
+  }
+
+  close() {
+    this.closeCalls += 1;
+    if (this.readyState === ManualWebSocket.CLOSED) return;
+    this.readyState = ManualWebSocket.CLOSED;
+    this.onclose?.({ code: 1000, reason: '' } as CloseEvent);
+  }
+
+  emitMessage(message: unknown) {
+    this.onmessage?.({ data: JSON.stringify(message) } as MessageEvent<string>);
+  }
+
+  emitClose(code = 1006, reason = '') {
+    this.readyState = ManualWebSocket.CLOSED;
+    this.onclose?.({ code, reason } as CloseEvent);
+  }
+}
+
+async function flushMicrotasks() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe('RithmicService', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     FakeWebSocket.lastInstance = null;
+    ManualWebSocket.instances = [];
+    vi.useRealTimers();
   });
 
   it('opens the local gateway with credentials and requests history', async () => {
@@ -122,6 +176,56 @@ describe('RithmicService', () => {
 
   it('requires both Rithmic credential fields', async () => {
     await expect(RithmicService.connect({ credentials: { username: 'test-user' } })).rejects.toThrow('password');
+  });
+
+  it('accepts a successful login response that arrives after the old 30-second deadline', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', ManualWebSocket);
+
+    const connectionPromise = RithmicService.connect({
+      credentials: { username: 'test-user', password: 'test-password' }
+    });
+    await flushMicrotasks();
+
+    const socket = ManualWebSocket.instances[0];
+    expect(socket.sent.map(JSON.parse)).toEqual([
+      { type: 'connect', credentials: { username: 'test-user', password: 'test-password' } }
+    ]);
+
+    await vi.advanceTimersByTimeAsync(33_000);
+    socket.emitMessage({ type: 'connected', symbols: [] });
+
+    await expect(connectionPromise).resolves.toMatchObject({ sourceId: 'rithmic' });
+  });
+
+  it('rejects immediately when the gateway closes before the login acknowledgement', async () => {
+    vi.stubGlobal('WebSocket', ManualWebSocket);
+
+    const connectionPromise = RithmicService.connect({
+      credentials: { username: 'test-user', password: 'test-password' }
+    });
+    await flushMicrotasks();
+
+    ManualWebSocket.instances[0].emitClose(1006, 'network lost');
+
+    await expect(connectionPromise).rejects.toThrow('closed before login completed');
+  });
+
+  it('closes and rejects an in-flight login when its signal is aborted', async () => {
+    vi.stubGlobal('WebSocket', ManualWebSocket);
+    const controller = new AbortController();
+
+    const connectionPromise = RithmicService.connect({
+      credentials: { username: 'test-user', password: 'test-password' },
+      signal: controller.signal
+    });
+    await flushMicrotasks();
+
+    const socket = ManualWebSocket.instances[0];
+    controller.abort();
+
+    await expect(connectionPromise).rejects.toMatchObject({ name: 'AbortError' });
+    expect(socket.closeCalls).toBe(1);
   });
 
   it('exposes account discovery and execution through the authenticated connection', async () => {

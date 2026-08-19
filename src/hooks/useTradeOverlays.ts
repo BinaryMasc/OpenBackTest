@@ -3,7 +3,10 @@ import type { Chart, OverlayEvent } from 'klinecharts';
 import { useTradeStore } from '../store/useTradeStore';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useExecutionStore } from '../store/useExecutionStore';
+import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useChartStyleStore } from '../store/useChartStyleStore';
+import type { ExecutionPosition, OrderUpdate } from '../services/execution';
+import type { MarketSymbol } from '../types';
 
 const WORKING_ORDER_STATUSES = new Set(['pending', 'working', 'partially-filled']);
 
@@ -18,17 +21,73 @@ function formatPrice(price: number): string {
   return price.toFixed(price >= 1000 ? 2 : 4).replace(/\.?0+$/, '');
 }
 
+function isPositiveFinite(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value > 0;
+}
+
+function getLiveContractMultiplier(
+  symbols: MarketSymbol[],
+  currentSymbol: string,
+  fallbackContractSize: number
+): number {
+  const instrument = symbols.find(item => sameSymbol(item.symbol, currentSymbol));
+  return [instrument?.contractSize, instrument?.pointValue, fallbackContractSize]
+    .find(isPositiveFinite) ?? 1;
+}
+
+function calculateLivePnL(
+  position: ExecutionPosition,
+  price: number | undefined,
+  contractMultiplier: number,
+  quantity = position.quantity
+): number | null {
+  const averagePrice = position.averagePrice;
+  if (
+    !isPositiveFinite(averagePrice)
+    || !isPositiveFinite(price)
+    || !isPositiveFinite(quantity)
+    || !isPositiveFinite(contractMultiplier)
+    || position.side === 'flat'
+  ) {
+    return null;
+  }
+
+  const priceDifference = position.side === 'long'
+    ? price - averagePrice
+    : averagePrice - price;
+  return priceDifference * quantity * contractMultiplier;
+}
+
+function formatPnL(value: number | null): string {
+  if (value === null) return '—';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
+}
+
+function getProtectiveOrderLabel(order: OrderUpdate, position: ExecutionPosition | undefined): 'TP' | 'SL' | null {
+  if (!position || position.side === 'flat') return null;
+
+  const closesLong = position.side === 'long' && order.side === 'sell';
+  const closesShort = position.side === 'short' && order.side === 'buy';
+  if (!closesLong && !closesShort) return null;
+
+  if (order.orderType === 'limit') return 'TP';
+  if (order.orderType === 'stop' || order.orderType === 'stop-limit') return 'SL';
+  return null;
+}
+
 export function useTradeOverlays(
   chartRef: React.MutableRefObject<Chart | null>,
   chartReady = true
 ) {
   const { 
     position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, 
-    tradeHistory, showTradeHistory 
+    tradeHistory, showTradeHistory, contractSize
   } = useTradeStore();
   const mode = useBacktestStore(state => state.mode);
   const currentSymbol = useBacktestStore(state => state.symbol);
+  const currentPrice = useBacktestStore(state => state.rawData[state.currentIndex]?.close);
   const accountState = useExecutionStore(state => state.accountState);
+  const marketSymbols = useMarketDataStore(state => state.symbols);
   const cancelOrder = useExecutionStore(state => state.cancelOrder);
   const placeOrder = useExecutionStore(state => state.placeOrder);
   const setTakeProfit = useTradeStore(state => state.setTakeProfit);
@@ -158,21 +217,34 @@ export function useTradeOverlays(
     // every streamed order update redraws the chart without touching drawings.
     chart.removeOverlay({ groupId: 'broker_trade_group' });
     if (mode === 'live' && accountState && currentSymbol) {
+      const contractMultiplier = getLiveContractMultiplier(marketSymbols, currentSymbol, contractSize);
+      const livePosition = accountState.positions.find(item =>
+        sameSymbol(item.symbol, currentSymbol)
+        && item.side !== 'flat'
+        && item.quantity > 0
+      );
+
       accountState.positions
-        .filter(item => sameSymbol(item.symbol, currentSymbol) && Number.isFinite(item.averagePrice) && item.quantity > 0)
+        .filter(item => sameSymbol(item.symbol, currentSymbol)
+          && item.side !== 'flat'
+          && isPositiveFinite(item.averagePrice)
+          && item.quantity > 0)
         .forEach(item => {
+          const averagePrice = item.averagePrice;
+          if (!isPositiveFinite(averagePrice)) return;
           const side = item.side === 'short' ? 'SHORT' : 'LONG';
           const color = item.side === 'short' ? downColor : upColor;
+          const pnl = calculateLivePnL(item, currentPrice, contractMultiplier);
           chart.createOverlay({
             id: `broker_position_${item.symbol}`,
             name: 'positionLine',
             groupId: 'broker_trade_group',
             extendData: {
-              text: `${side} ${item.quantity} @ ${formatPrice(item.averagePrice!)} | OPEN`,
+              text: `${side} ${item.quantity} @ ${formatPrice(averagePrice)} | PnL: ${formatPnL(pnl)}`,
               color,
               dashed: false,
             },
-            points: [{ value: item.averagePrice }],
+            points: [{ value: averagePrice }],
           });
         });
 
@@ -183,7 +255,7 @@ export function useTradeOverlays(
           && Number.isFinite(item.orderType === 'limit' ? item.limitPrice : item.stopPrice))
         .forEach(item => {
           const price = item.orderType === 'limit' ? item.limitPrice : item.stopPrice;
-          if (!Number.isFinite(price)) return;
+          if (!isPositiveFinite(price)) return;
 
           const side = item.side.toUpperCase();
           const status = item.status.replace('-', ' ').toUpperCase();
@@ -192,51 +264,49 @@ export function useTradeOverlays(
             : item.orderType === 'stop-limit'
               ? 'STOP LIMIT'
               : 'STOP';
-          const livePosition = accountState.positions.find(position => sameSymbol(position.symbol, currentSymbol));
-          const protectiveLabel = livePosition?.side === 'long'
-            ? item.side === 'sell' && item.orderType === 'limit'
-              ? 'TP'
-              : item.side === 'sell' && (item.orderType === 'stop' || item.orderType === 'stop-limit')
-                ? 'SL'
-                : orderLabel
-            : livePosition?.side === 'short'
-              ? item.side === 'buy' && item.orderType === 'limit'
-                ? 'TP'
-                : item.side === 'buy' && (item.orderType === 'stop' || item.orderType === 'stop-limit')
-                  ? 'SL'
-                  : orderLabel
-              : orderLabel;
+          const protectiveLabel = getProtectiveOrderLabel(item, livePosition);
+          const displayLabel = protectiveLabel ?? orderLabel;
+          const overlayName = protectiveLabel === 'TP'
+            ? 'tpLine'
+            : protectiveLabel === 'SL'
+              ? 'slLine'
+              : 'brokerLine';
           const color = item.side === 'buy' ? upColor : downColor;
           const overlayId = `broker_order_${item.orderId}`;
+          const remainingQuantity = Math.max(0, item.quantity - item.filledQuantity);
+          const formatOrderText = (value: number, dragged = false) => {
+            if (protectiveLabel && livePosition) {
+              const pnl = calculateLivePnL(livePosition, value, contractMultiplier, remainingQuantity);
+              return `${protectiveLabel}: ${formatPrice(value)} (${formatPnL(pnl)})`;
+            }
+            return `${displayLabel} ${side} ${item.quantity} @ ${formatPrice(value)} | ${dragged ? 'DRAGGED' : status}`;
+          };
+          const extendData = overlayName === 'brokerLine'
+            ? { text: formatOrderText(price), color, dashed: true }
+            : formatOrderText(price);
+
           chart.createOverlay({
             id: overlayId,
-            name: 'brokerLine',
+            name: overlayName,
             groupId: 'broker_trade_group',
-            extendData: {
-              text: `${protectiveLabel} ${side} ${item.quantity} @ ${formatPrice(price!)} | ${status}`,
-              color,
-              dashed: true,
-            },
+            extendData,
             points: [{ value: price }],
             onPressedMoving: (event: OverlayEvent) => {
               const value = event.overlay.points[0]?.value;
-              if (!Number.isFinite(value)) return false;
+              if (!isPositiveFinite(value)) return false;
               chart.overrideOverlay({
                 id: overlayId,
-                extendData: {
-                  text: `${protectiveLabel} ${side} ${item.quantity} @ ${formatPrice(value!)} | DRAGGED`,
-                  color,
-                  dashed: true,
-                },
+                extendData: overlayName === 'brokerLine'
+                  ? { text: formatOrderText(value, true), color, dashed: true }
+                  : formatOrderText(value),
               });
               return false;
             },
             onPressedMoveEnd: (event: OverlayEvent) => {
               const value = event.overlay.points[0]?.value;
               const originalPrice = item.orderType === 'limit' ? item.limitPrice : item.stopPrice;
-              if (!Number.isFinite(value) || value === originalPrice) return false;
+              if (!isPositiveFinite(value) || value === originalPrice) return false;
 
-              const remainingQuantity = Math.max(0, item.quantity - item.filledQuantity);
               if (remainingQuantity > 0) {
                 void (async () => {
                   const cancelled = await cancelOrder(item.orderId);
@@ -272,5 +342,5 @@ export function useTradeOverlays(
         });
       });
     }
-  }, [chartRef, chartReady, mode, currentSymbol, accountState, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, showTradeHistory, upColor, downColor]);
+  }, [chartRef, chartReady, mode, currentSymbol, currentPrice, accountState, marketSymbols, contractSize, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, showTradeHistory, upColor, downColor]);
 }

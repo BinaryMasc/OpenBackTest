@@ -5,6 +5,7 @@ import type { ExecutionAccountState } from '../../src/services/execution';
 import { useTradeOverlays } from '../../src/hooks/useTradeOverlays';
 import { useBacktestStore } from '../../src/store/useBacktestStore';
 import { useExecutionStore } from '../../src/store/useExecutionStore';
+import { useMarketDataStore } from '../../src/store/useMarketDataStore';
 import { useTradeStore } from '../../src/store/useTradeStore';
 
 describe('useTradeOverlays', () => {
@@ -18,8 +19,9 @@ describe('useTradeOverlays', () => {
 
   beforeEach(() => {
     useTradeStore.getState().reset();
-    useTradeStore.setState({ showTradeHistory: false });
-    useBacktestStore.setState({ mode: 'playback', symbol: '' });
+    useTradeStore.setState({ showTradeHistory: false, contractSize: 1 });
+    useBacktestStore.setState({ mode: 'playback', symbol: '', rawData: [], currentIndex: -1 });
+    useMarketDataStore.setState({ symbols: [] });
     useExecutionStore.setState({ accountState: null });
     chart = {
       getOverlayById: vi.fn().mockReturnValue(undefined),
@@ -127,7 +129,13 @@ describe('useTradeOverlays', () => {
       statistics: { openPositions: 1, workingOrders: 2, updatedAt: 1000 },
       updatedAt: 1000,
     };
-    useBacktestStore.setState({ mode: 'live', symbol: 'TEST' });
+    useBacktestStore.setState({
+      mode: 'live',
+      symbol: 'TEST',
+      rawData: [{ time: 1000, open: 105, high: 105, low: 105, close: 105, volume: 1 }],
+      currentIndex: 0,
+    });
+    useMarketDataStore.setState({ symbols: [{ symbol: 'TEST', contractSize: 50 }] });
     useExecutionStore.setState({ accountState });
 
     renderHook(() => useTradeOverlays(chartRef));
@@ -136,7 +144,106 @@ describe('useTradeOverlays', () => {
       .map(([overlay]) => overlay)
       .filter(overlay => overlay.groupId === 'broker_trade_group');
     expect(overlays).toHaveLength(3);
-    expect(overlays.find(overlay => overlay.id === 'broker_order_tp-1').extendData.text).toContain('TP');
-    expect(overlays.find(overlay => overlay.id === 'broker_order_sl-1').extendData.text).toContain('SL');
+    expect(overlays.find(overlay => overlay.id === 'broker_order_tp-1')).toMatchObject({
+      name: 'tpLine',
+      extendData: 'TP: 110 (+500.00)',
+    });
+    expect(overlays.find(overlay => overlay.id === 'broker_order_sl-1')).toMatchObject({
+      name: 'slLine',
+      extendData: 'SL: 90 (-500.00)',
+    });
+  });
+
+  it('updates live position PnL from the latest chart price and contract multiplier', () => {
+    const accountState: ExecutionAccountState = {
+      account: { id: 'paper-1' },
+      positions: [{ symbol: 'TEST', side: 'long', quantity: 2, averagePrice: 100 }],
+      orders: [],
+      statistics: { openPositions: 1, workingOrders: 0, updatedAt: 1000 },
+      updatedAt: 1000,
+    };
+    useBacktestStore.setState({
+      mode: 'live',
+      symbol: 'TEST',
+      rawData: [{ time: 1000, open: 102, high: 102, low: 102, close: 102, volume: 1 }],
+      currentIndex: 0,
+    });
+    useMarketDataStore.setState({ symbols: [{ symbol: 'TEST', contractSize: 50 }] });
+    useExecutionStore.setState({ accountState });
+
+    renderHook(() => useTradeOverlays(chartRef));
+
+    const latestPositionOverlay = () => chart.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .filter(overlay => overlay.id === 'broker_position_TEST')
+      .at(-1);
+    expect(latestPositionOverlay()).toMatchObject({
+      extendData: { text: 'LONG 2 @ 100 | PnL: +200.00' },
+    });
+
+    act(() => {
+      useBacktestStore.setState({
+        rawData: [{ time: 1000, open: 97, high: 97, low: 97, close: 97, volume: 1 }],
+      });
+    });
+
+    expect(latestPositionOverlay()).toMatchObject({
+      extendData: { text: 'LONG 2 @ 100 | PnL: -300.00' },
+    });
+  });
+
+  it('falls back to the configured contract size when live instrument metadata is unavailable', () => {
+    const accountState: ExecutionAccountState = {
+      account: { id: 'paper-1' },
+      positions: [{ symbol: 'TEST', side: 'short', quantity: 2, averagePrice: 100 }],
+      orders: [],
+      statistics: { openPositions: 1, workingOrders: 0, updatedAt: 1000 },
+      updatedAt: 1000,
+    };
+    useTradeStore.setState({ contractSize: 10 });
+    useBacktestStore.setState({
+      mode: 'live',
+      symbol: 'TEST',
+      rawData: [{ time: 1000, open: 98, high: 98, low: 98, close: 98, volume: 1 }],
+      currentIndex: 0,
+    });
+    useExecutionStore.setState({ accountState });
+
+    renderHook(() => useTradeOverlays(chartRef));
+
+    expect(chart.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find(overlay => overlay.id === 'broker_position_TEST'))
+      .toMatchObject({
+        extendData: { text: 'SHORT 2 @ 100 | PnL: +40.00' },
+      });
+  });
+
+  it('uses an instrument point value when its contract size is unavailable', () => {
+    const accountState: ExecutionAccountState = {
+      account: { id: 'paper-1' },
+      positions: [{ symbol: 'TEST', side: 'long', quantity: 2, averagePrice: 100 }],
+      orders: [],
+      statistics: { openPositions: 1, workingOrders: 0, updatedAt: 1000 },
+      updatedAt: 1000,
+    };
+    useTradeStore.setState({ contractSize: 10 });
+    useBacktestStore.setState({
+      mode: 'live',
+      symbol: 'TEST',
+      rawData: [{ time: 1000, open: 102, high: 102, low: 102, close: 102, volume: 1 }],
+      currentIndex: 0,
+    });
+    useMarketDataStore.setState({ symbols: [{ symbol: 'TEST', contractSize: 0, pointValue: 25 }] });
+    useExecutionStore.setState({ accountState });
+
+    renderHook(() => useTradeOverlays(chartRef));
+
+    expect(chart.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .find(overlay => overlay.id === 'broker_position_TEST'))
+      .toMatchObject({
+        extendData: { text: 'LONG 2 @ 100 | PnL: +100.00' },
+      });
   });
 });

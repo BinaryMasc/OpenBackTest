@@ -27,7 +27,7 @@ export function RithmicConnectionDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4">
       <form
         className="w-full max-w-lg rounded-xl border border-slate-700 bg-dark-800 p-5 shadow-2xl"
         onSubmit={event => { event.preventDefault(); void onConnect(); }}
@@ -72,6 +72,12 @@ export function RithmicConnectionDialog({
           <div className="mt-1 text-slate-400">Rithmic Paper Trading · Chicago Area · CME</div>
           <div className="mt-1 text-slate-500">The local gateway supplies the RAPI+ nameserver configuration.</div>
         </div>
+
+        {isLoading && (
+          <p className="mt-3 text-xs text-amber-300" role="status">
+            Signing in and loading symbol data. This can take a couple of minutes.
+          </p>
+        )}
 
         <label className="mt-4 flex items-start gap-2 text-xs text-slate-300">
           <input

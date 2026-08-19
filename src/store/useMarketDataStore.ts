@@ -69,6 +69,7 @@ const getBinanceCompatibilityState = (
 
 let connectionRequestId = 0;
 let symbolRequestId = 0;
+let pendingConnectionAbortController: AbortController | null = null;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Market-data connection failed';
@@ -80,11 +81,17 @@ function closeActiveConnection(state: Pick<MarketDataState, 'subscriptionRef' | 
   state.connectionRef?.close();
 }
 
+function abortPendingConnection() {
+  pendingConnectionAbortController?.abort();
+  pendingConnectionAbortController = null;
+}
+
 export const useMarketDataStore = create<MarketDataState>((set, get) => ({
   ...initialState,
 
   connectSource: async (sourceId: string, options?: MarketDataConnectionOptions) => {
     const requestId = ++connectionRequestId;
+    abortPendingConnection();
     closeActiveConnection(get());
 
     const source = getMarketDataSource(sourceId);
@@ -98,6 +105,16 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
       return;
     }
 
+    const abortController = new AbortController();
+    const externalSignal = options?.signal;
+    const abortFromExternalSignal = () => abortController.abort();
+    if (externalSignal?.aborted) {
+      abortController.abort();
+    } else {
+      externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true });
+    }
+    pendingConnectionAbortController = abortController;
+
     set({
       ...initialState,
       sourceId: source.id,
@@ -108,10 +125,10 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
     });
 
     try {
-      const connection = await source.connect(options);
+      const connection = await source.connect({ ...options, signal: abortController.signal });
       const symbols = await connection.listSymbols();
 
-      if (requestId !== connectionRequestId) {
+      if (abortController.signal.aborted || requestId !== connectionRequestId) {
         connection.close();
         return;
       }
@@ -131,13 +148,18 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
         await get().setSymbol(firstSymbol);
       }
     } catch (error) {
-      if (requestId !== connectionRequestId) return;
+      if (abortController.signal.aborted || requestId !== connectionRequestId) return;
 
       set({
         ...initialState,
         error: getErrorMessage(error),
         ...getBinanceCompatibilityState(null, false, false, [], null)
       });
+    } finally {
+      externalSignal?.removeEventListener('abort', abortFromExternalSignal);
+      if (pendingConnectionAbortController === abortController) {
+        pendingConnectionAbortController = null;
+      }
     }
   },
 
@@ -146,6 +168,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
   disconnectSource: () => {
     connectionRequestId += 1;
     symbolRequestId += 1;
+    abortPendingConnection();
     closeActiveConnection(get());
 
     set({

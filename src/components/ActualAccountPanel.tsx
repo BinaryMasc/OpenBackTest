@@ -374,9 +374,6 @@ export function ActualAccountPanel() {
               Confirm live trade
             </div>
             <p className="text-sm leading-6 text-slate-300">{pendingConfirmation.description}</p>
-            <p className="mt-3 text-xs leading-5 text-amber-200/80">
-              Live market data continues while you review this order.
-            </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"

@@ -116,9 +116,7 @@ export function useContextMenu({
         label: 'Trading',
         items: [
           {
-            label: isLive
-              ? `Set Take Profit here (${liveSide === 'sell' ? 'Sell Limit' : 'Buy Limit'})`
-              : 'Set Take Profit here',
+            label: 'Set Take Profit here',
             icon: React.createElement(Target, { size: 16 }),
             disabled: isLive ? !isValidLiveTP || !liveTakeProfit : isFlat || !isValidTP,
             type: 'success',
@@ -134,9 +132,7 @@ export function useContextMenu({
             }
           },
           {
-            label: isLive
-              ? `Set Stop Loss here (${liveSide === 'sell' ? 'Sell Stop' : 'Buy Stop'})`
-              : 'Set Stop Loss here',
+            label: 'Set Stop Loss here',
             icon: React.createElement(ShieldAlert, { size: 16 }),
             disabled: isLive ? !isValidLiveSL || !liveStopLoss : isFlat || !isValidSL,
             type: 'danger',

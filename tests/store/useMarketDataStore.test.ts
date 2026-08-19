@@ -75,8 +75,69 @@ describe('useMarketDataStore', () => {
       credentials: { username: 'test-user', password: 'test-password' }
     });
 
-    expect(receivedOptions).toEqual({
-      credentials: { username: 'test-user', password: 'test-password' }
+    expect(receivedOptions).toEqual(expect.objectContaining({
+      credentials: { username: 'test-user', password: 'test-password' },
+      signal: expect.any(AbortSignal)
+    }));
+  });
+
+  it('aborts pending connection attempts when reconnecting or disconnecting', async () => {
+    const signals: AbortSignal[] = [];
+    registerMarketDataSource({
+      id: 'pending-source',
+      name: 'Pending Source',
+      connect: options => new Promise<MarketDataConnection>((_resolve, reject) => {
+        const signal = options?.signal;
+        if (!signal) throw new Error('Expected the store to provide a connection signal');
+        signals.push(signal);
+        signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { name: 'AbortError' })), { once: true });
+      })
     });
+
+    const firstAttempt = useMarketDataStore.getState().connectSource('pending-source');
+    expect(signals).toHaveLength(1);
+
+    const secondAttempt = useMarketDataStore.getState().connectSource('pending-source');
+    expect(signals).toHaveLength(2);
+    expect(signals[0].aborted).toBe(true);
+
+    useMarketDataStore.getState().disconnectSource();
+    expect(signals[1].aborted).toBe(true);
+
+    await Promise.all([firstAttempt, secondAttempt]);
+    expect(useMarketDataStore.getState().isConnected).toBe(false);
+    expect(useMarketDataStore.getState().isLoading).toBe(false);
+  });
+
+  it('closes a connection that resolves after its attempt was cancelled', async () => {
+    let resolveConnection: ((connection: MarketDataConnection) => void) | undefined;
+    let receivedSignal: AbortSignal | undefined;
+    const lateClose = vi.fn();
+    const lateConnection: MarketDataConnection = {
+      ...connection,
+      sourceId: 'late-source',
+      sourceName: 'Late Source',
+      close: lateClose
+    };
+    registerMarketDataSource({
+      id: 'late-source',
+      name: 'Late Source',
+      connect: options => new Promise<MarketDataConnection>(resolve => {
+        receivedSignal = options?.signal;
+        resolveConnection = resolve;
+      })
+    });
+
+    const attempt = useMarketDataStore.getState().connectSource('late-source');
+    expect(receivedSignal?.aborted).toBe(false);
+
+    useMarketDataStore.getState().disconnectSource();
+    expect(receivedSignal?.aborted).toBe(true);
+    resolveConnection?.(lateConnection);
+
+    await attempt;
+    expect(lateClose).toHaveBeenCalledOnce();
+    expect(useMarketDataStore.getState().connectionRef).toBeNull();
+    expect(useMarketDataStore.getState().isConnected).toBe(false);
   });
 });

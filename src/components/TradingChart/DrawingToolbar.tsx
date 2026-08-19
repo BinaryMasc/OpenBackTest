@@ -1,4 +1,4 @@
-import { Square, Minus, Trash2, Pen, Rows4, Undo2, Redo2, Circle, ChartLine, Ruler, ChevronDown } from 'lucide-react';
+import { Square, Minus, Trash2, Pen, Rows4, Undo2, Redo2, Circle, ChartLine, Ruler, ChevronDown, PanelBottom /** Rows2*/ } from 'lucide-react';
 
 interface DrawingToolbarProps {
   activeTool: string | null;
@@ -101,6 +101,19 @@ export function DrawingToolbar({
       </button>
 
       <button
+        onClick={() => onToolClick('trade')}
+        className={`p-2 rounded transition-colors ${activeTool === 'trade'
+          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+          : 'hover:bg-dark-700 text-slate-400 border border-transparent'
+          }`}
+        title="Trade position (entry, target, stop)"
+        aria-label="Trade position"
+      >
+        {/* <Rows2 size={24}/> */}
+        <PanelBottom size={24}/>
+      </button>
+
+      <button
         onClick={() => onToolClick('pencil')}
         className={`p-2 rounded transition-colors ${activeTool === 'pencil'
           ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
@@ -165,6 +178,7 @@ export function DrawingToolbar({
       >
         <Ruler size={24} />
       </button>
+
 
       <div className="mt-auto">
         <button

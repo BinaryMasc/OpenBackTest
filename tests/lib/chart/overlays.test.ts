@@ -46,11 +46,12 @@ describe('custom overlay renderers', () => {
   it('registers every custom overlay with the expected drawing step', () => {
     expect(registered.mock.calls.map(([config]) => config.name)).toEqual([
       'rect', 'pencil', 'fibonacciLine', 'circle', 'text',
-      'positionLine', 'brokerLine', 'tpLine', 'slLine', 'measurement', 'tradeArrow'
+      'positionLine', 'brokerLine', 'tpLine', 'slLine', 'measurement', 'trade', 'tradeArrow'
     ]);
     expect(configFor('rect').totalStep).toBe(3);
     expect(configFor('pencil').totalStep).toBe(1);
     expect(configFor('measurement').totalStep).toBe(3);
+    expect(configFor('trade').totalStep).toBe(4);
   });
 
   it('draws a rectangle only after two points are available', () => {
@@ -142,6 +143,28 @@ describe('custom overlay renderers', () => {
     expect(figures[0].attrs.coordinates).toEqual([{ x: 0, y: 50 }, { x: 640, y: 50 }]);
     expect(figures[0].styles).toMatchObject({ style: 'dashed', color });
     expect(figures[1].attrs.text).toBe(text);
+    expect(figures[1].styles).toMatchObject({
+      color: '#f8fafc',
+      backgroundColor: '#0f172a',
+      borderColor: color,
+      borderSize: 1,
+    });
+  });
+
+  it('uses a high-contrast label for broker position and order levels', () => {
+    const figures = configFor('brokerLine').createPointFigures({
+      coordinates: [point(0, 50)],
+      bounding: { width: 640 },
+      overlay: { extendData: { color: '#2DC08E', text: 'LONG 2 @ 100 | OPEN', dashed: false } },
+    });
+
+    expect(figures[0].styles).toMatchObject({ style: 'solid', color: '#2DC08E' });
+    expect(figures[1].styles).toMatchObject({
+      color: '#f8fafc',
+      backgroundColor: '#0f172a',
+      borderColor: '#2DC08E',
+      borderSize: 1,
+    });
   });
 
   it('draws measurement range, percentage, and bar count', () => {
@@ -157,6 +180,48 @@ describe('custom overlay renderers', () => {
     expect(figures[1].type).toBe('line');
     expect(figures[2].attrs.text).toBe('+20.00 (+20.00%)');
     expect(figures[3].attrs.text).toBe('6 bars');
+  });
+
+  it('draws a TradingView-style trade position with green reward and red risk zones', () => {
+    const config = configFor('trade');
+    expect(config.createPointFigures({ coordinates: [point(10, 100, 100)] })).toEqual([]);
+
+    const figures = config.createPointFigures({
+      coordinates: [point(10, 100, 100), point(70, 40, 120), point(70, 160, 90)],
+      overlay: {
+        points: [point(10, 100, 100), point(70, 40, 120), point(70, 160, 90)],
+      },
+      precision: { price: 2 },
+    });
+
+    expect(figures).toHaveLength(6);
+    expect(figures[0]).toMatchObject({
+      type: 'polygon',
+      attrs: { coordinates: [{ x: 10, y: 100 }, { x: 70, y: 100 }, { x: 70, y: 40 }, { x: 10, y: 40 }] },
+      styles: { color: 'rgba(34, 197, 94, 0.24)', borderColor: '#22c55e' },
+    });
+    expect(figures[1]).toMatchObject({
+      type: 'polygon',
+      attrs: { coordinates: [{ x: 10, y: 100 }, { x: 70, y: 100 }, { x: 70, y: 160 }, { x: 10, y: 160 }] },
+      styles: { color: 'rgba(239, 68, 68, 0.24)', borderColor: '#ef4444' },
+    });
+    expect(figures[2]).toMatchObject({
+      type: 'line',
+      attrs: { coordinates: [{ x: 10, y: 100 }, { x: 70, y: 100 }] },
+    });
+    expect(figures[3].attrs.text).toBe('LONG · Entry 100.00 · R:R 2.00');
+    expect(figures[4].attrs.text).toBe('Target +20.00 (+20.00%)');
+    expect(figures[5].attrs.text).toBe('Stop -10.00 (-10.00%)');
+    expect(figures[3].styles).toMatchObject({ color: '#f8fafc', backgroundColor: '#0f172a', borderColor: '#22c55e' });
+
+    const shortFigures = config.createPointFigures({
+      coordinates: [point(10, 100, 100), point(70, 160, 80), point(70, 40, 110)],
+      overlay: {
+        points: [point(10, 100, 100), point(70, 160, 80), point(70, 40, 110)],
+      },
+      precision: { price: 2 },
+    });
+    expect(shortFigures[3].attrs.text).toBe('SHORT · Entry 100.00 · R:R 2.00');
   });
 
   it('draws trade arrows in the correct direction and color', () => {

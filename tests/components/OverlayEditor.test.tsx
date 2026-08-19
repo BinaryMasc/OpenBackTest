@@ -94,6 +94,15 @@ describe('OverlayEditor', () => {
     }));
   });
 
+  it('keeps trade-position zone colors semantic instead of exposing a generic color picker', () => {
+    const tradeOverlay = { ...mockOverlay, name: 'trade' };
+    render(<OverlayEditor {...defaultProps} overlay={tradeOverlay} />);
+
+    expect(screen.getByText('Profit and loss zones use fixed green and red colors.')).toBeInTheDocument();
+    expect(document.querySelector('input[type="color"]')).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="range"]')).not.toBeInTheDocument();
+  });
+
   it('handles close button click', () => {
     render(<OverlayEditor {...defaultProps} />);
     // The close button has an X icon inside, we can find it by looking for the closest button

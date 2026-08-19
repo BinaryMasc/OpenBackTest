@@ -56,8 +56,13 @@ credentials**. The browser connects to `ws://127.0.0.1:8765` by default. Set
   paper account, confirm the selected symbol and quantity, and verify the
   installed RAPI+ runtime's permissions and conformance requirements before
   using production credentials.
-- A single browser session is accepted at a time. The gateway keeps credentials
-  in memory for that session and clears its callback handler on disconnect.
+- Each browser WebSocket gets its own RAPI+ session, so a client can reconnect
+  after a dropped connection and multiple authorized browser clients can be
+  connected at the same time. Credentials remain in memory only for the
+  lifetime of their corresponding gateway session. If a browser closes while
+  its RAPI+ login or reference-data lookup is still pending, the gateway
+  cancels those waits and tears down that broker session instead of retaining
+  it until its normal timeout.
 
 The profile can be replaced with `RITHMIC_RAPI_PROFILE`, and individual
 connection fields can be overridden with the `RITHMIC_*` environment variables
