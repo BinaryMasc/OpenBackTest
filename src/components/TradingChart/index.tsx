@@ -17,23 +17,38 @@ import { useTradeOverlays } from '../../hooks/useTradeOverlays';
 import { SymbolLegend } from './SymbolLegend';
 import { ContextMenu } from './ContextMenu';
 import { useTradeStore } from '../../store/useTradeStore';
+import { useExecutionStore } from '../../store/useExecutionStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useContextMenu } from '../../hooks/useContextMenu';
 import { CandleStyleEditor } from './CandleStyleEditor';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
 import type { Timeframe } from '../../types';
 import { fillShortCandleGaps } from '../../utils/candleGaps';
+import type { ExecutionPosition } from '../../services/execution';
 
 interface TradingChartProps {
   id: string;
   timeframe: Timeframe;
 }
 
+function sameSymbol(left: string, right: string): boolean {
+  const normalizedLeft = left.trim().toUpperCase();
+  const normalizedRight = right.trim().toUpperCase();
+  return normalizedLeft === normalizedRight
+    || normalizedLeft.split('.')[0] === normalizedRight.split('.')[0];
+}
+
 export function TradingChart({ id, timeframe }: TradingChartProps) {
   const rawData = useBacktestStore(state => state.rawData);
   const currentIndex = useBacktestStore(state => state.currentIndex);
+  const mode = useBacktestStore(state => state.mode);
+  const symbol = useBacktestStore(state => state.symbol);
   const marketDataLoading = useMarketDataStore(state => state.isLoading);
   const marketDataSourceId = useMarketDataStore(state => state.sourceId);
+  const accountState = useExecutionStore(state => state.accountState);
+  const placeOrder = useExecutionStore(state => state.placeOrder);
+  const requestConfirmation = useExecutionStore(state => state.requestConfirmation);
+  const askForConfirmations = useExecutionStore(state => state.askForConfirmations);
 
   const isEditorOpen = useChartStyleStore(state => state.isEditorOpen);
   const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
@@ -61,14 +76,23 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const setStopLoss = useTradeStore(state => state.setStopLoss);
   
   const currentPrice = rawData[currentIndex]?.close || 0;
+  const livePosition: ExecutionPosition | null = mode === 'live'
+    ? accountState?.positions.find(item => sameSymbol(item.symbol, symbol) && item.quantity > 0) || null
+    : null;
 
   const { contextMenu, setContextMenu, handleContextMenu, contextMenuGroups } = useContextMenu({
     chartRef,
     containerRef,
     position,
+    mode,
+    symbol,
+    livePosition,
     currentPrice,
     setTakeProfit,
-    setStopLoss
+    setStopLoss,
+    placeOrder,
+    requestConfirmation,
+    askForConfirmations
   });
 
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();

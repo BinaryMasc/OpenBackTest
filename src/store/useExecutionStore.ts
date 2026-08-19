@@ -3,6 +3,7 @@ import type {
   ExecutionAccount,
   ExecutionAccountState,
   ExecutionConnection,
+  ExecutionConfirmation,
   OrderRequest,
   OrderUpdate
 } from '../services/execution';
@@ -15,6 +16,8 @@ interface ExecutionStoreState {
   accountState: ExecutionAccountState | null;
   isLoading: boolean;
   isSubmitting: boolean;
+  askForConfirmations: boolean;
+  pendingConfirmation: ExecutionConfirmation | null;
   error: string | null;
 
   connect: () => Promise<void>;
@@ -23,6 +26,9 @@ interface ExecutionStoreState {
   cancelOrder: (orderId: string) => Promise<OrderUpdate | null>;
   cancelAll: (symbol?: string) => Promise<void>;
   flatten: (symbol?: string) => Promise<void>;
+  requestConfirmation: (confirmation: ExecutionConfirmation) => void;
+  clearConfirmation: () => void;
+  setAskForConfirmations: (ask: boolean) => void;
   disconnect: () => void;
 }
 
@@ -92,6 +98,8 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
     accountState: null,
     isLoading: false,
     isSubmitting: false,
+    askForConfirmations: true,
+    pendingConfirmation: null,
     error: null,
 
     connect: async () => {
@@ -154,6 +162,13 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
           accountId,
           clientOrderId: order.clientOrderId || `openbacktest-${Date.now()}`
         });
+        const normalizedUpdate: OrderUpdate = {
+          ...order,
+          ...update,
+          accountId: update.accountId || accountId,
+          limitPrice: update.limitPrice ?? order.limitPrice,
+          stopPrice: update.stopPrice ?? order.stopPrice,
+        };
         if (get().connection === connection && get().selectedAccountId === accountId) {
           const current = get().accountState;
           if (current) {
@@ -162,16 +177,16 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
                 ...current,
                 orders: [
                   ...current.orders.filter(order =>
-                    order.orderId !== update.orderId
-                    && (!update.clientOrderId || order.clientOrderId !== update.clientOrderId)
+                    order.orderId !== normalizedUpdate.orderId
+                    && (!normalizedUpdate.clientOrderId || order.clientOrderId !== normalizedUpdate.clientOrderId)
                   ),
-                  update
+                  normalizedUpdate
                 ]
               }
             });
           }
         }
-        return update;
+        return normalizedUpdate;
       } catch (error) {
         set({ error: getErrorMessage(error) });
         return null;
@@ -256,10 +271,14 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
       }
     },
 
+    requestConfirmation: (confirmation: ExecutionConfirmation) => set({ pendingConfirmation: confirmation }),
+    clearConfirmation: () => set({ pendingConfirmation: null }),
+    setAskForConfirmations: (ask: boolean) => set({ askForConfirmations: ask }),
+
     disconnect: () => {
       requestSequence += 1;
       clearSubscriptions();
-      set({ connection: null, accounts: [], selectedAccountId: null, accountState: null, isLoading: false, isSubmitting: false, error: null });
+      set({ connection: null, accounts: [], selectedAccountId: null, accountState: null, isLoading: false, isSubmitting: false, pendingConfirmation: null, error: null });
     }
   };
 });

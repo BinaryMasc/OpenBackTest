@@ -326,6 +326,7 @@ sealed class GatewayOrder
     public double FilledQuantity { get; set; }
     public double? AverageFillPrice { get; set; }
     public double? LimitPrice { get; set; }
+    public double? StopPrice { get; set; }
     public string? RejectReason { get; set; }
     public string? ClientOrderId { get; set; }
 }
@@ -349,6 +350,7 @@ sealed class GatewayAccountState
     public double? MarginUsed { get; set; }
     public double? RealizedPnL { get; set; }
     public double? UnrealizedPnL { get; set; }
+    public double? Commissions { get; set; }
     public List<GatewayPosition> Positions { get; } = new();
     public List<GatewayOrder> Orders { get; } = new();
     public GatewayStatistics Statistics { get; } = new();
@@ -869,6 +871,7 @@ sealed class RapiSession
         state.MarginUsed = FirstDouble(info, "ReservedMargin", "Margin", "MarginUsed", "InitialMargin") ?? state.MarginUsed;
         state.RealizedPnL = FirstDouble(info, "ClosedPnl", "RealizedPnl", "RealizedPnL", "DailyPnl") ?? state.RealizedPnL;
         state.UnrealizedPnL = openPnl ?? state.UnrealizedPnL;
+        state.Commissions = FirstDouble(info, "Commission", "Commissions", "TotalCommission", "TotalCommissions", "Fees", "Fee") ?? state.Commissions;
 
         var ticker = ReadString(info, "Symbol") ?? ReadString(info, "Ticker");
         var exchange = ReadString(info, "Exchange");
@@ -951,11 +954,13 @@ sealed class RapiSession
         var exchange = ReadString(info, "Exchange");
         var rejectReason = isRejected ? ReadString(info, "Text") ?? ReadString(info, "Remarks") : null;
         var rawOrderType = ReadString(info, "OrderType") ?? "M";
-        var orderType = rawOrderType.Equals("L", StringComparison.OrdinalIgnoreCase)
-            || rawOrderType.Contains("limit", StringComparison.OrdinalIgnoreCase)
-            ? "limit"
-            : "market";
-        var limitPrice = orderType == "limit" ? FirstDouble(info, "PriceToFill", "Price") : null;
+        var isStop = rawOrderType.Equals("S", StringComparison.OrdinalIgnoreCase)
+            || rawOrderType.Contains("stop", StringComparison.OrdinalIgnoreCase);
+        var isLimit = rawOrderType.Equals("L", StringComparison.OrdinalIgnoreCase)
+            || rawOrderType.Contains("limit", StringComparison.OrdinalIgnoreCase);
+        var orderType = isStop ? (isLimit ? "stop-limit" : "stop") : (isLimit ? "limit" : "market");
+        var limitPrice = isLimit ? FirstDouble(info, "PriceToFill", "Price") : null;
+        var stopPrice = isStop ? FirstDouble(info, "TriggerPrice", "StopPrice", "PriceToStop") : null;
         var state = accountStates.TryGetValue(accountId, out var existing)
             ? existing
             : new GatewayAccountState { Account = accounts[accountId] };
@@ -971,6 +976,7 @@ sealed class RapiSession
             FilledQuantity = filledQuantity,
             AverageFillPrice = FirstDouble(info, "AvgFillPrice", "AverageFillPrice"),
             LimitPrice = limitPrice,
+            StopPrice = stopPrice,
             RejectReason = rejectReason,
             ClientOrderId = clientOrderId
         };
@@ -993,6 +999,7 @@ sealed class RapiSession
                 quantity,
                 orderType,
                 limitPrice,
+                stopPrice,
                 status,
                 filledQuantity,
                 averageFillPrice = order.AverageFillPrice,
@@ -1011,6 +1018,7 @@ sealed class RapiSession
                 quantity,
                 orderType,
                 limitPrice,
+                stopPrice,
                 status,
                 filledQuantity,
                 averageFillPrice = order.AverageFillPrice,
@@ -1034,6 +1042,7 @@ sealed class RapiSession
         if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(symbol) || quantity <= 0 || price <= 0) return;
 
         var side = (ReadString(info, "BuySellType") ?? ReadString(info, "FillSide") ?? "B").Equals("S", StringComparison.OrdinalIgnoreCase) ? "sell" : "buy";
+        var commission = FirstDouble(info, "Commission", "Commissions", "Fee", "Fees");
         _ = SendAsync(new
         {
             type = "fill",
@@ -1045,7 +1054,8 @@ sealed class RapiSession
                 side,
                 quantity,
                 price,
-                time = ReadLong(info, "Ssboe")
+                time = ReadLong(info, "Ssboe"),
+                fee = commission
             }
         });
     }
@@ -1068,15 +1078,25 @@ sealed class RapiSession
             throw new InvalidOperationException("Rithmic futures order quantity must be a whole number of contracts.");
         var side = (ReadString(order, "side") ?? "buy").Equals("sell", StringComparison.OrdinalIgnoreCase) ? "S" : "B";
         var orderType = (ReadString(order, "orderType") ?? "market").ToLowerInvariant();
-        if (orderType is not ("market" or "limit"))
-            throw new InvalidOperationException("Rithmic live mode currently supports market and limit orders only.");
-        var limitPrice = orderType == "limit" ? ReadDouble(order, "limitPrice") : 0;
-        if (orderType == "limit" && limitPrice <= 0)
+        if (orderType is not ("market" or "limit" or "stop" or "stop-limit"))
+            throw new InvalidOperationException("Rithmic live mode currently supports market, limit, and stop orders.");
+        var limitPrice = orderType is "limit" or "stop-limit" ? ReadDouble(order, "limitPrice") : 0;
+        var stopPrice = orderType is "stop" or "stop-limit" ? ReadDouble(order, "stopPrice") : 0;
+        if (orderType is "limit" or "stop-limit" && limitPrice <= 0)
             throw new InvalidOperationException("A positive limitPrice is required for a Rithmic limit order.");
+        if (orderType is "stop" or "stop-limit" && stopPrice <= 0)
+            throw new InvalidOperationException("A positive stopPrice is required for a Rithmic stop order.");
         var clientOrderId = ReadString(order, "clientOrderId") ?? $"openbacktest-{Guid.NewGuid():N}";
         var tradeRoute = await ResolveTradeRouteAsync(parsed.Exchange);
 
-        var paramsType = assembly!.GetType(orderType == "limit" ? "com.omnesys.rapi.LimitOrderParams" : "com.omnesys.rapi.MarketOrderParams", throwOnError: true)!;
+        var paramsTypeName = orderType switch
+        {
+            "limit" => "com.omnesys.rapi.LimitOrderParams",
+            "stop" => "com.omnesys.rapi.StopMarketOrderParams",
+            "stop-limit" => "com.omnesys.rapi.StopLimitOrderParams",
+            _ => "com.omnesys.rapi.MarketOrderParams"
+        };
+        var paramsType = assembly!.GetType(paramsTypeName, throwOnError: true)!;
         var parameters = Activator.CreateInstance(paramsType)
             ?? throw new InvalidOperationException("Could not create Rithmic market-order parameters.");
         SetAny(parameters, "Account", rawAccount);
@@ -1085,9 +1105,15 @@ sealed class RapiSession
         SetAny(parameters, "TradeRoute", tradeRoute);
         SetAny(parameters, "BuySellType", side);
         SetAny(parameters, "Qty", Convert.ToInt64(roundedQuantity));
-        if (orderType == "limit") SetAny(parameters, "Price", limitPrice);
+        if (orderType is "limit" or "stop-limit") SetAny(parameters, "Price", limitPrice);
+        if (orderType is "stop" or "stop-limit") SetAny(parameters, "TriggerPrice", stopPrice);
         SetAny(parameters, "Duration", "DAY");
-        SetAny(parameters, "EntryType", orderType == "limit" ? "L" : "M");
+        SetAny(parameters, "EntryType", orderType switch
+        {
+            "limit" => "L",
+            "stop" or "stop-limit" => "S",
+            _ => "M"
+        });
         SetAny(parameters, "Tag", "OpenBackTest");
         SetAny(parameters, "TradingAlgorithm", "OpenBackTest");
         SetAny(parameters, "UserMsg", clientOrderId);
@@ -1100,7 +1126,8 @@ sealed class RapiSession
             side = side == "B" ? "buy" : "sell",
             quantity,
             orderType,
-            limitPrice = orderType == "limit" ? limitPrice : (double?)null,
+            limitPrice = orderType is "limit" or "stop-limit" ? limitPrice : (double?)null,
+            stopPrice = orderType is "stop" or "stop-limit" ? stopPrice : (double?)null,
             status = "working",
             filledQuantity = 0,
             clientOrderId,
@@ -1151,6 +1178,7 @@ sealed class RapiSession
             quantity = existing?.Quantity ?? 0,
             orderType = existing?.OrderType ?? "market",
             limitPrice = existing?.LimitPrice,
+            stopPrice = existing?.StopPrice,
             status = "cancelled",
             filledQuantity = existing?.FilledQuantity ?? 0,
             averageFillPrice = existing?.AverageFillPrice

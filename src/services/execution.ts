@@ -22,10 +22,17 @@ export interface ExecutionAccountState {
   marginUsed?: number;
   realizedPnL?: number;
   unrealizedPnL?: number;
+  commissions?: number;
   positions: ExecutionPosition[];
   orders: OrderUpdate[];
   statistics: ExecutionAccountStatistics;
   updatedAt: number;
+}
+
+export interface ExecutionConfirmation {
+  description: string;
+  confirmLabel: string;
+  submit: () => Promise<void>;
 }
 
 export type OrderSide = 'buy' | 'sell';

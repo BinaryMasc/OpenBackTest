@@ -3,6 +3,7 @@ import { AlertTriangle, BarChart3, CircleOff, Loader, RefreshCw, ShieldCheck, Wa
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useExecutionStore } from '../store/useExecutionStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
+import { useChartStyleStore } from '../store/useChartStyleStore';
 import type { OrderType } from '../services/execution';
 
 function formatCurrency(value?: number) {
@@ -46,12 +47,17 @@ export function ActualAccountPanel() {
     placeOrder,
     cancelOrder,
     cancelAll,
-    flatten
+    flatten,
+    askForConfirmations,
+    setAskForConfirmations,
+    pendingConfirmation,
+    requestConfirmation,
+    clearConfirmation
   } = useExecutionStore();
+  const { upColor, downColor } = useChartStyleStore();
   const [orderSize, setOrderSize] = useState(1);
   const [orderType, setOrderType] = useState<OrderType>('market');
   const [limitPrice, setLimitPrice] = useState('');
-
   useEffect(() => {
     void connect();
     return () => useExecutionStore.getState().disconnect();
@@ -64,23 +70,58 @@ export function ActualAccountPanel() {
     const description = orderType === 'limit'
       ? `${side.toUpperCase()} LIMIT ${orderSize} ${currentSymbol} @ ${parsedLimitPrice}`
       : `${side.toUpperCase()} MARKET ${orderSize} ${currentSymbol}`;
-    if (!window.confirm(`Submit live ${description}?`)) return;
-    await placeOrder({
+    const order = {
       symbol: currentSymbol,
       side,
       quantity: orderSize,
       orderType,
       ...(orderType === 'limit' ? { limitPrice: parsedLimitPrice } : {})
-    });
+    } as const;
+    const sendOrder = async () => {
+      await placeOrder(order);
+    };
+    if (askForConfirmations) {
+      requestConfirmation({
+        description: `Submit live ${description}?`,
+        confirmLabel: 'Send live order',
+        submit: sendOrder
+      });
+    } else {
+      await sendOrder();
+    }
   };
 
   const handleFlatten = async () => {
-    if (!currentSymbol || !window.confirm(`Flatten ${currentSymbol}? This sends a live broker order.`)) return;
-    await flatten(currentSymbol);
+    if (!currentSymbol) return;
+    const flattenPosition = async () => {
+      await flatten(currentSymbol);
+    };
+    if (askForConfirmations) {
+      requestConfirmation({
+        description: `Flatten ${currentSymbol}? This sends a live broker order.`,
+        confirmLabel: 'Flatten position',
+        submit: flattenPosition
+      });
+    } else {
+      await flattenPosition();
+    }
+  };
+
+  const closeConfirmation = () => {
+    clearConfirmation();
+  };
+
+  const confirmPendingAction = async () => {
+    const action = pendingConfirmation;
+    closeConfirmation();
+    if (action) await action.submit();
   };
 
   const pnlClass = (value?: number) => value === undefined ? 'text-slate-400' : value >= 0 ? 'text-emerald-400' : 'text-red-400';
   const snapshot = accountState;
+  const netPnL = snapshot
+    ? (snapshot.realizedPnL ?? 0) + (snapshot.unrealizedPnL ?? 0) - (snapshot.commissions ?? 0)
+    : undefined;
   const canTrade = Boolean(
     snapshot
     && selectedAccountId
@@ -111,8 +152,10 @@ export function ActualAccountPanel() {
       </div>
 
       <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[10px] leading-4 text-amber-200/80">
-        Live mode sends orders to the selected broker account. Confirm the symbol and quantity before submitting.
+        Live mode sends orders to the selected broker account. Review the symbol and quantity before submitting.
       </div>
+
+      
 
       {!brokerConnection && (
         <div className="rounded-lg border border-dark-700 bg-dark-900/50 p-3 text-xs leading-5 text-slate-400">
@@ -150,8 +193,8 @@ export function ActualAccountPanel() {
             <StatCard label="Balance" value={formatCurrency(snapshot.balance)} />
             <StatCard label="Realized P&L" value={formatCurrency(snapshot.realizedPnL)} valueClass={pnlClass(snapshot.realizedPnL)} />
             <StatCard label="Open P&L" value={formatCurrency(snapshot.unrealizedPnL)} valueClass={pnlClass(snapshot.unrealizedPnL)} />
-            <StatCard label="Buying Power" value={formatCurrency(snapshot.buyingPower)} />
-            <StatCard label="Margin Used" value={formatCurrency(snapshot.marginUsed)} />
+            <StatCard label="Net P&L" value={formatCurrency(netPnL)} valueClass={pnlClass(netPnL)} />
+            <StatCard label="Commissions" value={formatCurrency(snapshot.commissions)} />
           </div>
 
           <div>
@@ -276,7 +319,8 @@ export function ActualAccountPanel() {
                 type="button"
                 onClick={() => void submitMarketOrder('buy')}
                 disabled={!canTrade}
-                className="rounded-lg bg-emerald-600 py-2.5 text-xs font-bold text-white transition-all hover:bg-emerald-500 disabled:opacity-50"
+                style={{ backgroundColor: upColor }}
+                className="rounded-lg py-2.5 text-xs font-bold text-white transition-all hover:brightness-110 disabled:opacity-50"
               >
                 {orderType === 'limit' ? 'Buy Limit' : 'Buy Market'}
               </button>
@@ -284,7 +328,8 @@ export function ActualAccountPanel() {
                 type="button"
                 onClick={() => void submitMarketOrder('sell')}
                 disabled={!canTrade}
-                className="rounded-lg bg-[#ef5350] py-2.5 text-xs font-bold text-white transition-all hover:bg-[#d32f2f] disabled:opacity-50"
+                style={{ backgroundColor: downColor }}
+                className="rounded-lg py-2.5 text-xs font-bold text-white transition-all hover:brightness-110 disabled:opacity-50"
               >
                 {orderType === 'limit' ? 'Sell Limit' : 'Sell Market'}
               </button>
@@ -300,6 +345,57 @@ export function ActualAccountPanel() {
             </div>
           </div>
         </>
+      )}
+      <label className="flex items-center gap-2 text-xs text-slate-400">
+        <input
+          type="checkbox"
+          checked={askForConfirmations}
+          onChange={event => setAskForConfirmations(event.target.checked)}
+          className="h-3.5 w-3.5 accent-primary-500"
+        />
+        Ask for confirmations
+      </label>
+
+      {pendingConfirmation && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-transparent p-4"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) closeConfirmation();
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-dark-700 bg-dark-800 p-5 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="live-trade-confirmation-title"
+          >
+            <div className="mb-2 text-sm font-bold text-white" id="live-trade-confirmation-title">
+              Confirm live trade
+            </div>
+            <p className="text-sm leading-6 text-slate-300">{pendingConfirmation.description}</p>
+            <p className="mt-3 text-xs leading-5 text-amber-200/80">
+              Live market data continues while you review this order.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeConfirmation}
+                className="rounded-lg border border-dark-600 px-4 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-dark-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmPendingAction()}
+                className="rounded-lg px-4 py-2 text-xs font-bold text-white transition-all hover:brightness-110"
+                style={{ backgroundColor: upColor }}
+              >
+                {pendingConfirmation.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

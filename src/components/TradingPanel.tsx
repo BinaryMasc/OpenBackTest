@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTradeStore } from '../store/useTradeStore';
 import { useBacktestStore } from '../store/useBacktestStore';
+import { useChartStyleStore } from '../store/useChartStyleStore';
 import { CircleOff, Wallet, BarChart3, Activity, ChevronDown } from 'lucide-react';
 
 export function TradingPanel() {
@@ -14,6 +15,7 @@ export function TradingPanel() {
   } = useTradeStore();
 
   const { rawData, currentIndex, symbol } = useBacktestStore();
+  const { upColor, downColor } = useChartStyleStore();
   const currentCandle = rawData[currentIndex];
   const currentPrice = currentCandle?.close || 0;
 
@@ -208,14 +210,16 @@ export function TradingPanel() {
         <button
           onClick={() => buy(currentPrice)}
           disabled={!currentPrice || isBlown || isWrongSymbol}
-          className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-lg font-bold transition-all shadow-lg shadow-emerald-900/20 active:scale-95 disabled:opacity-50"
+          style={{ backgroundColor: upColor }}
+          className="flex items-center justify-center gap-2 text-white py-3 rounded-lg font-bold transition-all shadow-lg hover:brightness-110 active:scale-95 disabled:opacity-50"
         >
           Buy (Long)
         </button>
         <button
           onClick={() => sell(currentPrice)}
           disabled={!currentPrice || isBlown || isWrongSymbol}
-          className="flex items-center justify-center gap-2 bg-[#ef5350] hover:bg-[#d32f2f] text-white py-3 rounded-lg font-bold transition-all shadow-lg shadow-red-900/10 active:scale-95 disabled:opacity-50"
+          style={{ backgroundColor: downColor }}
+          className="flex items-center justify-center gap-2 text-white py-3 rounded-lg font-bold transition-all shadow-lg hover:brightness-110 active:scale-95 disabled:opacity-50"
         >
           Sell (Short)
         </button>
@@ -238,7 +242,8 @@ export function TradingPanel() {
             setTakeProfit(position === 'long' ? currentPrice + diff : currentPrice - diff);
           }}
           disabled={position === 'flat' || !currentPrice || isWrongSymbol}
-          className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-emerald-400 border border-emerald-900/50 py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
+          style={{ color: upColor, borderColor: `${upColor}80` }}
+          className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 border py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
         >
           TP
         </button>
@@ -249,7 +254,8 @@ export function TradingPanel() {
             setStopLoss(position === 'long' ? currentPrice - diff : currentPrice + diff);
           }}
           disabled={position === 'flat' || !currentPrice || isWrongSymbol}
-          className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 text-red-400 border border-red-900/50 py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
+          style={{ color: downColor, borderColor: `${downColor}80` }}
+          className="flex items-center justify-center gap-2 bg-dark-800 hover:bg-dark-700 border py-2 rounded-lg font-bold transition-all text-xs disabled:opacity-50"
         >
           SL
         </button>

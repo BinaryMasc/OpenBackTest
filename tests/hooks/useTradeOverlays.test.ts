@@ -1,7 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Chart } from 'klinecharts';
+import type { ExecutionAccountState } from '../../src/services/execution';
 import { useTradeOverlays } from '../../src/hooks/useTradeOverlays';
+import { useBacktestStore } from '../../src/store/useBacktestStore';
+import { useExecutionStore } from '../../src/store/useExecutionStore';
 import { useTradeStore } from '../../src/store/useTradeStore';
 
 describe('useTradeOverlays', () => {
@@ -16,6 +19,8 @@ describe('useTradeOverlays', () => {
   beforeEach(() => {
     useTradeStore.getState().reset();
     useTradeStore.setState({ showTradeHistory: false });
+    useBacktestStore.setState({ mode: 'playback', symbol: '' });
+    useExecutionStore.setState({ accountState: null });
     chart = {
       getOverlayById: vi.fn().mockReturnValue(undefined),
       createOverlay: vi.fn(),
@@ -60,7 +65,7 @@ describe('useTradeOverlays', () => {
     expect(overlays.map(overlay => overlay.name)).toEqual(['positionLine', 'tpLine', 'slLine', 'tradeArrow']);
     expect(overlays[0]).toMatchObject({
       id: 'positionLine_overlay',
-      extendData: { text: ' 2 @ 100.00 | PnL: +12.50', color: '#008a63ff' },
+      extendData: { text: ' 2 @ 100.00 | PnL: +12.50', color: '#2DC08E' },
       points: [{ value: 100 }]
     });
     expect(overlays[1].extendData).toBe('TP: 120.00 (+40.00)');
@@ -109,5 +114,29 @@ describe('useTradeOverlays', () => {
     useTradeStore.setState({ showTradeHistory: false });
     renderHook(() => useTradeOverlays(chartRef));
     expect(chart.removeOverlay).toHaveBeenCalledWith({ groupId: 'trade_history_group' });
+  });
+
+  it('renders live TP and SL orders on the chart', () => {
+    const accountState: ExecutionAccountState = {
+      account: { id: 'paper-1' },
+      positions: [{ symbol: 'TEST', side: 'long', quantity: 1, averagePrice: 100 }],
+      orders: [
+        { orderId: 'tp-1', symbol: 'TEST', side: 'sell', quantity: 1, orderType: 'limit', limitPrice: 110, status: 'working', filledQuantity: 0 },
+        { orderId: 'sl-1', symbol: 'TEST', side: 'sell', quantity: 1, orderType: 'stop', stopPrice: 90, status: 'working', filledQuantity: 0 },
+      ],
+      statistics: { openPositions: 1, workingOrders: 2, updatedAt: 1000 },
+      updatedAt: 1000,
+    };
+    useBacktestStore.setState({ mode: 'live', symbol: 'TEST' });
+    useExecutionStore.setState({ accountState });
+
+    renderHook(() => useTradeOverlays(chartRef));
+
+    const overlays = chart.createOverlay.mock.calls
+      .map(([overlay]) => overlay)
+      .filter(overlay => overlay.groupId === 'broker_trade_group');
+    expect(overlays).toHaveLength(3);
+    expect(overlays.find(overlay => overlay.id === 'broker_order_tp-1').extendData.text).toContain('TP');
+    expect(overlays.find(overlay => overlay.id === 'broker_order_sl-1').extendData.text).toContain('SL');
   });
 });

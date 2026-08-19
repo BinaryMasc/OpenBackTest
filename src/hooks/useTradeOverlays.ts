@@ -3,6 +3,7 @@ import type { Chart, OverlayEvent } from 'klinecharts';
 import { useTradeStore } from '../store/useTradeStore';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useExecutionStore } from '../store/useExecutionStore';
+import { useChartStyleStore } from '../store/useChartStyleStore';
 
 const WORKING_ORDER_STATUSES = new Set(['pending', 'working', 'partially-filled']);
 
@@ -32,6 +33,8 @@ export function useTradeOverlays(
   const placeOrder = useExecutionStore(state => state.placeOrder);
   const setTakeProfit = useTradeStore(state => state.setTakeProfit);
   const setStopLoss = useTradeStore(state => state.setStopLoss);
+  const upColor = useChartStyleStore(state => state.upColor);
+  const downColor = useChartStyleStore(state => state.downColor);
 
   const isDraggingRef = useRef(false);
 
@@ -50,7 +53,7 @@ export function useTradeOverlays(
         name: 'positionLine',
         extendData: {
           text: positionText,
-          color: position === 'long' ? '#008a63ff' : '#bb2b2bff'
+          color: position === 'long' ? upColor : downColor
         },
         points: [{ value: entryPrice }]
       };
@@ -159,7 +162,7 @@ export function useTradeOverlays(
         .filter(item => sameSymbol(item.symbol, currentSymbol) && Number.isFinite(item.averagePrice) && item.quantity > 0)
         .forEach(item => {
           const side = item.side === 'short' ? 'SHORT' : 'LONG';
-          const color = item.side === 'short' ? '#ef4444' : '#22c55e';
+          const color = item.side === 'short' ? downColor : upColor;
           chart.createOverlay({
             id: `broker_position_${item.symbol}`,
             name: 'positionLine',
@@ -176,22 +179,41 @@ export function useTradeOverlays(
       accountState.orders
         .filter(item => sameSymbol(item.symbol, currentSymbol)
           && WORKING_ORDER_STATUSES.has(item.status)
-          && item.orderType === 'limit'
-          && Number.isFinite(item.limitPrice))
+          && (item.orderType === 'limit' || item.orderType === 'stop' || item.orderType === 'stop-limit')
+          && Number.isFinite(item.orderType === 'limit' ? item.limitPrice : item.stopPrice))
         .forEach(item => {
-          const price = item.limitPrice;
+          const price = item.orderType === 'limit' ? item.limitPrice : item.stopPrice;
           if (!Number.isFinite(price)) return;
 
           const side = item.side.toUpperCase();
           const status = item.status.replace('-', ' ').toUpperCase();
-          const color = item.side === 'buy' ? '#60a5fa' : '#f59e0b';
+          const orderLabel = item.orderType === 'limit'
+            ? 'LIMIT'
+            : item.orderType === 'stop-limit'
+              ? 'STOP LIMIT'
+              : 'STOP';
+          const livePosition = accountState.positions.find(position => sameSymbol(position.symbol, currentSymbol));
+          const protectiveLabel = livePosition?.side === 'long'
+            ? item.side === 'sell' && item.orderType === 'limit'
+              ? 'TP'
+              : item.side === 'sell' && (item.orderType === 'stop' || item.orderType === 'stop-limit')
+                ? 'SL'
+                : orderLabel
+            : livePosition?.side === 'short'
+              ? item.side === 'buy' && item.orderType === 'limit'
+                ? 'TP'
+                : item.side === 'buy' && (item.orderType === 'stop' || item.orderType === 'stop-limit')
+                  ? 'SL'
+                  : orderLabel
+              : orderLabel;
+          const color = item.side === 'buy' ? upColor : downColor;
           const overlayId = `broker_order_${item.orderId}`;
           chart.createOverlay({
             id: overlayId,
             name: 'brokerLine',
             groupId: 'broker_trade_group',
             extendData: {
-              text: `${side} LIMIT ${item.quantity} @ ${formatPrice(price!)} | ${status}`,
+              text: `${protectiveLabel} ${side} ${item.quantity} @ ${formatPrice(price!)} | ${status}`,
               color,
               dashed: true,
             },
@@ -202,7 +224,7 @@ export function useTradeOverlays(
               chart.overrideOverlay({
                 id: overlayId,
                 extendData: {
-                  text: `${side} LIMIT ${item.quantity} @ ${formatPrice(value!)} | DRAGGED`,
+                  text: `${protectiveLabel} ${side} ${item.quantity} @ ${formatPrice(value!)} | DRAGGED`,
                   color,
                   dashed: true,
                 },
@@ -211,7 +233,8 @@ export function useTradeOverlays(
             },
             onPressedMoveEnd: (event: OverlayEvent) => {
               const value = event.overlay.points[0]?.value;
-              if (!Number.isFinite(value) || value === item.limitPrice) return false;
+              const originalPrice = item.orderType === 'limit' ? item.limitPrice : item.stopPrice;
+              if (!Number.isFinite(value) || value === originalPrice) return false;
 
               const remainingQuantity = Math.max(0, item.quantity - item.filledQuantity);
               if (remainingQuantity > 0) {
@@ -222,8 +245,10 @@ export function useTradeOverlays(
                     symbol: item.symbol,
                     side: item.side,
                     quantity: remainingQuantity,
-                    orderType: 'limit',
-                    limitPrice: value,
+                    orderType: item.orderType,
+                    reduceOnly: item.reduceOnly,
+                    ...(item.orderType === 'limit' ? { limitPrice: value } : item.orderType === 'stop-limit' ? { limitPrice: item.limitPrice } : {}),
+                    ...(item.orderType === 'stop' || item.orderType === 'stop-limit' ? { stopPrice: value } : {}),
                     clientOrderId: `${item.clientOrderId || item.orderId}-move-${Date.now()}`,
                   });
                 })();
@@ -247,5 +272,5 @@ export function useTradeOverlays(
         });
       });
     }
-  }, [chartRef, chartReady, mode, currentSymbol, accountState, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, showTradeHistory]);
+  }, [chartRef, chartReady, mode, currentSymbol, accountState, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, showTradeHistory, upColor, downColor]);
 }
