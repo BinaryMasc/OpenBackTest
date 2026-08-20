@@ -1,5 +1,6 @@
 import { registerOverlay } from 'klinecharts';
 import type { OverlayFigure, OverlayCreateFiguresCallbackParams } from 'klinecharts';
+import { hexToRgba } from './utils';
 
 const OVERLAY_LABEL_BACKGROUND = '#0f172a';
 const OVERLAY_LABEL_TEXT = '#f8fafc';
@@ -409,8 +410,8 @@ export function registerCustomOverlays(): void {
 
   registerOverlay({
     name: 'trade',
-    // Click entry, target, then stop. The green/red zones deliberately use
-    // fixed semantic colors instead of the generic drawing color.
+    // Click entry, target, then stop. Colors are stored on the overlay so the
+    // drawing can be customized; labels are shown only while selected.
     // KlineCharts completes an overlay at totalStep - 1 points.
     totalStep: 4,
     needDefaultPointFigure: true,
@@ -422,33 +423,14 @@ export function registerCustomOverlays(): void {
       const [entry, target, stop] = coordinates;
       const startX = Math.min(entry.x, target.x, stop?.x ?? target.x);
       const endX = Math.max(entry.x, target.x, stop?.x ?? target.x, startX + 8);
-      const centerX = (startX + endX) / 2;
-
+      const data = overlay.extendData as { rewardColor?: string; riskColor?: string; selected?: boolean } | undefined;
+      const rewardColor = data?.rewardColor ?? '#22c55e';
+      const riskColor = data?.riskColor ?? '#ef4444';
       const entryValue = overlay.points[0]?.value;
       const targetValue = overlay.points[1]?.value;
       const stopValue = overlay.points[2]?.value;
       const hasEntryAndTarget = isFiniteNumber(entryValue) && isFiniteNumber(targetValue);
       const hasStop = isFiniteNumber(stopValue);
-      const pricePrecision = precision?.price ?? 2;
-      const isLong = hasEntryAndTarget ? targetValue > entryValue : true;
-      const direction = isLong ? 'LONG' : 'SHORT';
-      const reward = hasEntryAndTarget ? Math.abs(targetValue - entryValue) : 0;
-      const risk = hasEntryAndTarget && hasStop ? Math.abs(stopValue - entryValue) : 0;
-      const targetPercent = hasEntryAndTarget && entryValue !== 0
-        ? (reward / Math.abs(entryValue)) * 100
-        : 0;
-      const stopPercent = hasEntryAndTarget && hasStop && entryValue !== 0
-        ? (risk / Math.abs(entryValue)) * 100
-        : 0;
-      const rewardText = hasEntryAndTarget
-        ? `Target +${formatTradePrice(reward, pricePrecision)} (+${targetPercent.toFixed(2)}%)`
-        : 'Target';
-      const riskText = hasEntryAndTarget && hasStop
-        ? `Stop -${formatTradePrice(risk, pricePrecision)} (-${stopPercent.toFixed(2)}%)`
-        : 'Stop';
-      const entryText = hasEntryAndTarget
-        ? `${direction} · Entry ${formatTradePrice(entryValue, pricePrecision)}${risk > 0 ? ` · R:R ${(reward / risk).toFixed(2)}` : ''}`
-        : 'Entry';
 
       const figures: OverlayFigure[] = [
         {
@@ -462,38 +444,10 @@ export function registerCustomOverlays(): void {
             ],
           },
           styles: {
-            style: 'stroke_fill',
-            color: 'rgba(34, 197, 94, 0.24)',
-            borderColor: '#22c55e',
-            borderSize: 1,
+            style: 'fill',
+            color: hexToRgba(rewardColor, 0.24),
+            borderSize: 0,
           },
-        },
-        {
-          type: 'line',
-          attrs: { coordinates: [{ x: startX, y: entry.y }, { x: endX, y: entry.y }] },
-          styles: { color: '#e2e8f0', size: 1, style: 'solid' },
-        },
-        {
-          type: 'text',
-          attrs: {
-            x: startX + 6,
-            y: entry.y - 6,
-            text: entryText,
-            align: 'left',
-            baseline: 'bottom',
-          },
-          styles: highContrastLabelStyles(isLong ? '#22c55e' : '#ef4444', 11, 3),
-        },
-        {
-          type: 'text',
-          attrs: {
-            x: centerX,
-            y: (entry.y + target.y) / 2,
-            text: rewardText,
-            align: 'center',
-            baseline: 'middle',
-          },
-          styles: highContrastLabelStyles('#22c55e', 11, 3),
         },
       ];
 
@@ -509,23 +463,38 @@ export function registerCustomOverlays(): void {
             ],
           },
           styles: {
-            style: 'stroke_fill',
-            color: 'rgba(239, 68, 68, 0.24)',
-            borderColor: '#ef4444',
-            borderSize: 1,
+            style: 'fill',
+            color: hexToRgba(riskColor, 0.24),
+            borderSize: 0,
           },
+        });
+      }
+
+      if (data?.selected) {
+        const pricePrecision = precision?.price ?? 2;
+        const reward = hasEntryAndTarget ? Math.abs(targetValue - entryValue) : 0;
+        const risk = hasEntryAndTarget && hasStop ? Math.abs(stopValue - entryValue) : 0;
+        const direction = hasEntryAndTarget && targetValue > entryValue ? 'LONG' : 'SHORT';
+        const entryText = hasEntryAndTarget
+          ? `${direction} · Entry ${formatTradePrice(entryValue, pricePrecision)}${risk > 0 ? ` · R:R ${(reward / risk).toFixed(2)}` : ''}`
+          : 'Entry';
+        figures.push({
+          type: 'text',
+          attrs: { x: startX + 6, y: entry.y - 6, text: entryText, align: 'left', baseline: 'bottom' },
+          styles: { color: '#ffffff', size: 11 },
         });
         figures.push({
           type: 'text',
-          attrs: {
-            x: centerX,
-            y: (entry.y + stop.y) / 2,
-            text: riskText,
-            align: 'center',
-            baseline: 'middle',
-          },
-          styles: highContrastLabelStyles('#ef4444', 11, 3),
+          attrs: { x: (startX + endX) / 2, y: (entry.y + target.y) / 2, text: `Target +${formatTradePrice(reward, pricePrecision)}`, align: 'center', baseline: 'middle' },
+          styles: { color: '#ffffff', size: 11 },
         });
+        if (stop) {
+          figures.push({
+            type: 'text',
+            attrs: { x: (startX + endX) / 2, y: (entry.y + stop.y) / 2, text: `Stop -${formatTradePrice(risk, pricePrecision)}`, align: 'center', baseline: 'middle' },
+            styles: { color: '#ffffff', size: 11 },
+          });
+        }
       }
 
       return figures;
@@ -538,8 +507,9 @@ export function registerCustomOverlays(): void {
     createPointFigures: ({ coordinates, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
       if (coordinates.length === 0) return [];
       const { x, y } = coordinates[0];
-      const type = overlay.extendData as 'buy' | 'sell';
-      const color = type === 'buy' ? '#22c55e' : '#ef4444';
+      const data = overlay.extendData as { type?: 'buy' | 'sell'; color?: string } | 'buy' | 'sell';
+      const type = typeof data === 'string' ? data : data?.type;
+      const color = typeof data === 'string' ? '#ffffff' : data?.color ?? '#ffffff';
 
       const figures: OverlayFigure[] = [];
 

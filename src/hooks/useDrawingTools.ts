@@ -59,11 +59,17 @@ export function useDrawingTools({
       },
       onSelected: (event: { overlay: Overlay }) => {
         selectedForDeleteRef.current = event.overlay.id;
+        if (event.overlay.name === 'trade') {
+          chart.overrideOverlay({ id: event.overlay.id, extendData: { ...event.overlay.extendData, selected: true } });
+        }
         return true;
       },
       onDeselected: (event: { overlay: Overlay }) => {
         if (selectedForDeleteRef.current === event.overlay.id) {
           selectedForDeleteRef.current = null;
+        }
+        if (event.overlay.name === 'trade') {
+          chart.overrideOverlay({ id: event.overlay.id, extendData: { ...event.overlay.extendData, selected: false } });
         }
         return true;
       },
@@ -72,6 +78,10 @@ export function useDrawingTools({
         return true;
       },
     };
+
+    if (toolName === 'trade') {
+      config.extendData = { rewardColor: '#22c55e', riskColor: '#ef4444' };
+    }
 
     chart.createOverlay(config);
   }, [activeTool, chartRef, overlayColor, overlayOpacity, overlayFontSize, onOverlaySelected, onOverlayCreated]);

@@ -5,7 +5,8 @@ import type {
   ExecutionConnection,
   ExecutionConfirmation,
   OrderRequest,
-  OrderUpdate
+  OrderUpdate,
+  ExecutionFill
 } from '../services/execution';
 import { useMarketDataStore } from './useMarketDataStore';
 
@@ -19,6 +20,7 @@ interface ExecutionStoreState {
   askForConfirmations: boolean;
   pendingConfirmation: ExecutionConfirmation | null;
   error: string | null;
+  fills: ExecutionFill[];
 
   connect: () => Promise<void>;
   selectAccount: (accountId: string) => Promise<void>;
@@ -84,9 +86,14 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
         }
       });
     });
-    fillSubscription = connection.subscribeFills(() => {
+    fillSubscription = connection.subscribeFills(fill => {
       if (get().connection !== connection || get().selectedAccountId !== accountId) return;
-      void get().selectAccount(accountId);
+      set(state => ({ fills: [...state.fills, fill] }));
+      void connection.getAccountState(accountId).then(state => {
+        if (get().connection === connection && get().selectedAccountId === accountId) {
+          set({ accountState: state, error: null });
+        }
+      });
     });
     set({ accountState, isLoading: false, error: null });
   };
@@ -101,6 +108,7 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
     askForConfirmations: true,
     pendingConfirmation: null,
     error: null,
+    fills: [],
 
     connect: async () => {
       const marketConnection = useMarketDataStore.getState().connectionRef;
@@ -112,7 +120,7 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
 
       const sequence = ++requestSequence;
       clearSubscriptions();
-      set({ connection, isLoading: true, error: null, accountState: null });
+      set({ connection, isLoading: true, error: null, accountState: null, fills: [] });
       try {
         const accounts = await connection.listAccounts();
         if (sequence !== requestSequence || get().connection !== connection) return;
@@ -139,7 +147,7 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
 
       const sequence = ++requestSequence;
       clearSubscriptions();
-      set({ selectedAccountId: accountId, accountState: null, isLoading: true, error: null });
+      set({ selectedAccountId: accountId, accountState: null, isLoading: true, error: null, fills: [] });
       try {
         await loadSelectedAccount(connection, accountId, sequence);
       } catch (error) {
@@ -278,7 +286,7 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
     disconnect: () => {
       requestSequence += 1;
       clearSubscriptions();
-      set({ connection: null, accounts: [], selectedAccountId: null, accountState: null, isLoading: false, isSubmitting: false, pendingConfirmation: null, error: null });
+      set({ connection: null, accounts: [], selectedAccountId: null, accountState: null, fills: [], isLoading: false, isSubmitting: false, pendingConfirmation: null, error: null });
     }
   };
 });

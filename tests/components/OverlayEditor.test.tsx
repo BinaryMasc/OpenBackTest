@@ -94,12 +94,13 @@ describe('OverlayEditor', () => {
     }));
   });
 
-  it('keeps trade-position zone colors semantic instead of exposing a generic color picker', () => {
+  it('exposes customizable trade-position zone colors', () => {
     const tradeOverlay = { ...mockOverlay, name: 'trade' };
     render(<OverlayEditor {...defaultProps} overlay={tradeOverlay} />);
 
-    expect(screen.getByText('Profit and loss zones use fixed green and red colors.')).toBeInTheDocument();
-    expect(document.querySelector('input[type="color"]')).not.toBeInTheDocument();
+    expect(screen.getByText('Profit zone')).toBeInTheDocument();
+    expect(screen.getByText('Risk zone')).toBeInTheDocument();
+    expect(document.querySelectorAll('input[type="color"]')).toHaveLength(2);
     expect(document.querySelector('input[type="range"]')).not.toBeInTheDocument();
   });
 

@@ -75,7 +75,7 @@ describe('useTradeOverlays', () => {
     expect(overlays[3]).toMatchObject({
       id: 'trade_trade-1',
       groupId: 'trade_history_group',
-      extendData: 'buy',
+      extendData: { type: 'buy', color: '#ffffff' },
       points: [{ timestamp: 1000000, value: 100 }]
     });
   });

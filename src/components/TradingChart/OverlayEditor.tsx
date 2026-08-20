@@ -35,10 +35,20 @@ export function OverlayEditor({
   const panelRef = useRef<HTMLDivElement>(null);
   const [textValue, setTextValue] = useState((overlay.extendData as string) ?? 'Text');
   const isTradePosition = overlay.name === 'trade';
+  const tradeData = (overlay.extendData && typeof overlay.extendData === 'object')
+    ? overlay.extendData as { rewardColor?: string; riskColor?: string }
+    : {};
+  const [rewardColor, setRewardColor] = useState(tradeData.rewardColor ?? '#22c55e');
+  const [riskColor, setRiskColor] = useState(tradeData.riskColor ?? '#ef4444');
 
   // Sync local state when overlay changes
   useEffect(() => {
     setTextValue((overlay.extendData as string) ?? 'Text');
+    const data = overlay.extendData && typeof overlay.extendData === 'object'
+      ? overlay.extendData as { rewardColor?: string; riskColor?: string }
+      : {};
+    setRewardColor(data.rewardColor ?? '#22c55e');
+    setRiskColor(data.riskColor ?? '#ef4444');
   }, [overlay.id, overlay.extendData]);
 
   // Close on click outside
@@ -73,7 +83,16 @@ export function OverlayEditor({
     chart.overrideOverlay({
       id: overlay.id,
       styles,
-      extendData: textValue,
+      extendData: isTradePosition ? { ...tradeData, rewardColor, riskColor } : textValue,
+    });
+  };
+
+  const updateTradeColor = (key: 'rewardColor' | 'riskColor', color: string) => {
+    if (key === 'rewardColor') setRewardColor(color);
+    else setRiskColor(color);
+    chartRef.current?.overrideOverlay({
+      id: overlay.id,
+      extendData: { ...tradeData, rewardColor: key === 'rewardColor' ? color : rewardColor, riskColor: key === 'riskColor' ? color : riskColor },
     });
   };
 
@@ -91,9 +110,16 @@ export function OverlayEditor({
 
       <div className="flex flex-col gap-3">
         {isTradePosition ? (
-          <p className="rounded border border-slate-700 bg-dark-700/50 px-3 py-2 text-xs leading-5 text-slate-300">
-            Profit and loss zones use fixed green and red colors.
-          </p>
+          <>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-slate-400">Profit zone</label>
+              <input type="color" value={rewardColor} onChange={e => updateTradeColor('rewardColor', e.target.value)} className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-slate-400">Risk zone</label>
+              <input type="color" value={riskColor} onChange={e => updateTradeColor('riskColor', e.target.value)} className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600" />
+            </div>
+          </>
         ) : (
           <>
             <div className="flex flex-col gap-1">

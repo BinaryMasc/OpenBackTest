@@ -64,6 +64,7 @@ export interface OrderUpdate extends OrderRequest {
 }
 
 export interface ExecutionFill {
+  accountId?: string;
   orderId: string;
   symbol: string;
   side: OrderSide;

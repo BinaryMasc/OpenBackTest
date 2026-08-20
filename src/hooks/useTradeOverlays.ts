@@ -87,6 +87,7 @@ export function useTradeOverlays(
   const currentSymbol = useBacktestStore(state => state.symbol);
   const currentPrice = useBacktestStore(state => state.rawData[state.currentIndex]?.close);
   const accountState = useExecutionStore(state => state.accountState);
+  const liveFills = useExecutionStore(state => state.fills);
   const marketSymbols = useMarketDataStore(state => state.symbols);
   const cancelOrder = useExecutionStore(state => state.cancelOrder);
   const placeOrder = useExecutionStore(state => state.placeOrder);
@@ -331,16 +332,20 @@ export function useTradeOverlays(
 
     // Sync trade history
     chart.removeOverlay({ groupId: 'trade_history_group' });
-    if (showTradeHistory && tradeHistory.length > 0) {
-      tradeHistory.forEach(trade => {
+    const history = mode === 'live'
+      ? liveFills.filter(fill => sameSymbol(fill.symbol, currentSymbol))
+      : tradeHistory;
+    if (showTradeHistory && history.length > 0) {
+      history.forEach((trade, index) => {
+        const tradeType = 'side' in trade ? trade.side : trade.type;
         chart.createOverlay({
-          id: `trade_${trade.id}`,
+          id: `trade_${'id' in trade ? trade.id : `${trade.orderId}_${trade.time}_${index}`}`,
           name: 'tradeArrow',
           groupId: 'trade_history_group',
-          extendData: trade.type,
+          extendData: { type: tradeType, color: '#ffffff' },
           points: [{ timestamp: trade.time * 1000, value: trade.price }]
         });
       });
     }
-  }, [chartRef, chartReady, mode, currentSymbol, currentPrice, accountState, marketSymbols, contractSize, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, showTradeHistory, upColor, downColor]);
+  }, [chartRef, chartReady, mode, currentSymbol, currentPrice, accountState, marketSymbols, contractSize, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, liveFills, showTradeHistory, upColor, downColor]);
 }
