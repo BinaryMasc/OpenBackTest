@@ -91,14 +91,14 @@ describe('Controls mobile sidebar', () => {
     expect(sidebar).toHaveClass('-translate-x-full', 'invisible');
   });
 
-  it('closes the drawer when a mode is selected', () => {
+  it('keeps the drawer open when a mode is selected', () => {
     render(<Controls />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Open trading controls menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Simulation' }));
 
     expect(setMode).toHaveBeenCalledWith('simulation');
-    expect(screen.getByRole('button', { name: 'Open trading controls menu' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Close trading controls menu' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('retracts the drawer before opening the Rithmic dialog', () => {

@@ -60,7 +60,6 @@ export function Controls() {
 
   const handleModeChange = (nextMode: typeof mode) => {
     setMode(nextMode);
-    closeMobileMenu();
   };
 
   const updateRithmicCredential = (field: keyof RithmicCredentials, value: string) => {
@@ -320,7 +319,7 @@ export function Controls() {
       <button
         type="button"
         onClick={() => setIsMobileMenuOpen(open => !open)}
-        className="fixed top-3 left-3 z-[120] flex h-10 w-10 items-center justify-center rounded-lg border border-dark-700 bg-dark-800 text-slate-200 shadow-lg transition-colors hover:bg-dark-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 md:hidden"
+        className="fixed top-1.5 left-1.5 z-[120] flex h-10 w-10 items-center justify-center rounded-lg border border-dark-700 bg-dark-800 text-slate-200 shadow-lg transition-colors hover:bg-dark-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 md:hidden"
         aria-controls="trading-controls-sidebar"
         aria-expanded={isMobileMenuOpen}
         aria-label={isMobileMenuOpen ? 'Close trading controls menu' : 'Open trading controls menu'}
