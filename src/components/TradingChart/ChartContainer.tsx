@@ -1,5 +1,5 @@
 import { useChartStyleStore } from '../../store/useChartStyleStore';
-import { Focus, RefreshCw } from 'lucide-react';
+import { ArrowRight, RefreshCw } from 'lucide-react';
 
 interface ChartContainerProps {
   id: string;
@@ -22,15 +22,15 @@ export function ChartContainer({ id, containerRef, isLoading = false, loadingMes
       />
 
       <div className="absolute bottom-3 right-3 z-40 flex items-center gap-1 rounded-lg border border-dark-700/80 bg-dark-800/90 p-1 shadow-lg">
-        {/* <button
+        <button
           type="button"
           onClick={onFitChart}
           className="rounded p-1.5 text-slate-400 transition-colors hover:bg-dark-700 hover:text-slate-100"
           title="Fit chart"
           aria-label="Fit chart"
         >
-          <Focus size={15} />
-        </button> */}
+          <ArrowRight size={15} />
+        </button>
         <button
           type="button"
           onClick={onRefreshData}
