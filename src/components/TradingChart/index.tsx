@@ -184,7 +184,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   return (
     <div className="w-full h-full flex flex-col bg-dark-900 text-slate-300">
       {/* Top Header Bar */}
-      <div className="h-10 border-b border-dark-700 bg-dark-800 flex items-center px-4 shrink-0 overflow-visible z-[60]">
+      <div className="h-10 border-b border-dark-700 bg-dark-800 flex items-center pl-14 pr-4 md:px-4 shrink-0 overflow-visible z-[60]">
         <SymbolLegend chartId={id} />
       </div>
 

@@ -16,6 +16,7 @@ coverage/
 # Local Rithmic gateway build output
 gateway/bin/
 gateway/obj/
+gateway/publish/
 
 # Editor directories and files
 .vscode/*

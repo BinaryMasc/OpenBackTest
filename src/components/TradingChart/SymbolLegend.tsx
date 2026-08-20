@@ -249,7 +249,7 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
       )}
 
       {/* Layout Menu */}
-      <div className="relative" ref={layoutRef}>
+      <div className="relative hidden md:block" ref={layoutRef}>
         <button
           onClick={() => setIsLayoutOpen(!isLayoutOpen)}
           className={`flex items-center justify-center p-1.5 rounded-md transition-all gap-1.5 ${isLayoutOpen ? 'text-primary-400 bg-primary-500/10' : 'text-slate-500 hover:text-slate-300 hover:bg-dark-700'}`}

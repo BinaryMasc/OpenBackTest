@@ -382,7 +382,7 @@ export function Controls() {
                 : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
-              <PlayCircle size={14} />
+              <PlayCircle size={10} />
               Playback
             </button>
             <button
@@ -392,7 +392,7 @@ export function Controls() {
                 : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
-              <TrendingUp size={14} />
+              <TrendingUp size={10} />
               Simulation
             </button>
             <button
@@ -402,7 +402,7 @@ export function Controls() {
                 : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
-              <ShieldCheck size={14} />
+              <ShieldCheck size={12} />
               Live
             </button>
           </div>
