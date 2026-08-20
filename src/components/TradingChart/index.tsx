@@ -45,6 +45,8 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const symbol = useBacktestStore(state => state.symbol);
   const marketDataLoading = useMarketDataStore(state => state.isLoading);
   const marketDataSourceId = useMarketDataStore(state => state.sourceId);
+  const marketDataSymbol = useMarketDataStore(state => state.symbol);
+  const refreshMarketData = useMarketDataStore(state => state.setSymbol);
   const accountState = useExecutionStore(state => state.accountState);
   const placeOrder = useExecutionStore(state => state.placeOrder);
   const requestConfirmation = useExecutionStore(state => state.requestConfirmation);
@@ -76,6 +78,20 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const setStopLoss = useTradeStore(state => state.setStopLoss);
   
   const currentPrice = rawData[currentIndex]?.close || 0;
+  const handleFitChart = useCallback(() => {
+    chartRef.current?.scrollToRealTime(200);
+    chartRef.current?.resize();
+  }, [chartRef]);
+
+  const handleRefreshData = useCallback(() => {
+    if (mode === 'live' && marketDataSymbol) {
+      void refreshMarketData(marketDataSymbol);
+      return;
+    }
+    const chart = chartRef.current;
+    if (chart) chart.applyNewData(chart.getDataList());
+  }, [chartRef, mode, marketDataSymbol, refreshMarketData]);
+
   const livePosition: ExecutionPosition | null = mode === 'live'
     ? accountState?.positions.find(item => sameSymbol(item.symbol, symbol) && item.quantity > 0) || null
     : null;
@@ -208,6 +224,8 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
             id={id}
             containerRef={containerRef}
             isLoading={isLiveDataLoading}
+            onFitChart={handleFitChart}
+            onRefreshData={handleRefreshData}
           />
 
           {/* Top-left indicator legend */}

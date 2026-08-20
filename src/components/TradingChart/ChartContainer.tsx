@@ -1,13 +1,16 @@
 import { useChartStyleStore } from '../../store/useChartStyleStore';
+import { Focus, RefreshCw } from 'lucide-react';
 
 interface ChartContainerProps {
   id: string;
   containerRef: React.RefObject<HTMLDivElement | null>;
   isLoading?: boolean;
   loadingMessage?: string;
+  onFitChart?: () => void;
+  onRefreshData?: () => void;
 }
 
-export function ChartContainer({ id, containerRef, isLoading = false, loadingMessage = 'Loading market data' }: ChartContainerProps) {
+export function ChartContainer({ id, containerRef, isLoading = false, loadingMessage = 'Loading market data', onFitChart, onRefreshData }: ChartContainerProps) {
   const backgroundColor = useChartStyleStore(state => state.backgroundColor);
 
   return (
@@ -17,6 +20,27 @@ export function ChartContainer({ id, containerRef, isLoading = false, loadingMes
         className="absolute inset-0"
         ref={containerRef}
       />
+
+      <div className="absolute bottom-3 right-3 z-40 flex items-center gap-1 rounded-lg border border-dark-700/80 bg-dark-800/90 p-1 shadow-lg">
+        {/* <button
+          type="button"
+          onClick={onFitChart}
+          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-dark-700 hover:text-slate-100"
+          title="Fit chart"
+          aria-label="Fit chart"
+        >
+          <Focus size={15} />
+        </button> */}
+        <button
+          type="button"
+          onClick={onRefreshData}
+          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-dark-700 hover:text-slate-100"
+          title="Refresh chart data"
+          aria-label="Refresh chart data"
+        >
+          <RefreshCw size={15} />
+        </button>
+      </div>
 
       {isLoading && (
         <div
