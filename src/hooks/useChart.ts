@@ -1,22 +1,32 @@
 import { useRef, useEffect, useState } from 'react';
-import { init, dispose, type Chart, TooltipShowRule } from 'klinecharts';
+import { init, dispose, type Chart, TooltipShowRule, ActionType } from 'klinecharts';
 import type { Candle, Timeframe } from '../types';
 import { registerCustomOverlays } from '../lib/chart/overlays';
 import { registerCustomIndicators } from '../lib/chart/customIndicators';
 import { useChartStyleStore } from '../store/useChartStyleStore';
+import { useChartStateStore } from '../store/useChartStateStore';
 
 interface UseChartOptions {
   containerId: string;
+  symbol?: string;
   aggregatedData: Candle[];
   timeframe: Timeframe;
 }
 
-export function useChart({ containerId, aggregatedData, timeframe }: UseChartOptions) {
+export function useChart({ containerId, symbol = '', aggregatedData, timeframe }: UseChartOptions) {
   const chartRef = useRef<Chart | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const prevTimeframeRef = useRef(timeframe);
   const prevDataLengthRef = useRef(0);
+  const symbolRef = useRef(symbol);
+  const timeframeRef = useRef(timeframe);
+  const restoredViewKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    symbolRef.current = symbol;
+    timeframeRef.current = timeframe;
+  }, [symbol, timeframe]);
 
   const { upColor, downColor, upBorderColor, downBorderColor, upWickColor, downWickColor } = useChartStyleStore();
 
@@ -26,6 +36,7 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
     registerCustomIndicators();
     const chart = init(containerId);
     let handleDblClick: ((e: MouseEvent) => void) | null = null;
+    let saveViewState: (() => void) | null = null;
 
     if (chart) {
       chartRef.current = chart;
@@ -96,16 +107,67 @@ export function useChart({ containerId, aggregatedData, timeframe }: UseChartOpt
       };
 
       container.addEventListener('dblclick', handleDblClick);
+
+      saveViewState = () => {
+        const currentSymbol = symbolRef.current;
+        if (!currentSymbol) return;
+        const visibleRange = chart.getVisibleRange();
+        const barSpace = chart.getBarSpace();
+        if (!Number.isFinite(barSpace) || !Number.isFinite(visibleRange.to)) return;
+        useChartStateStore.getState().saveView(
+          currentSymbol,
+          containerId,
+          timeframeRef.current,
+          { barSpace, lastVisibleIndex: visibleRange.to },
+        );
+      };
+
+      chart.subscribeAction(ActionType.OnZoom, saveViewState);
+      chart.subscribeAction(ActionType.OnScroll, saveViewState);
+      chart.subscribeAction(ActionType.OnVisibleRangeChange, saveViewState);
     }
     return () => {
       if (handleDblClick && containerRef.current) {
         containerRef.current.removeEventListener('dblclick', handleDblClick);
+      }
+      if (saveViewState && chart) {
+        chart.unsubscribeAction(ActionType.OnZoom, saveViewState);
+        chart.unsubscribeAction(ActionType.OnScroll, saveViewState);
+        chart.unsubscribeAction(ActionType.OnVisibleRangeChange, saveViewState);
       }
       dispose(containerId);
       chartRef.current = null;
       setIsReady(false);
     };
   }, []);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !isReady || !symbol || aggregatedData.length === 0) return;
+
+    const restoreKey = `${symbol.trim().toUpperCase()}:${containerId}:${timeframe}`;
+    if (restoredViewKeyRef.current === restoreKey) return;
+
+    const savedView = useChartStateStore.getState().getView(symbol, containerId, timeframe);
+    restoredViewKeyRef.current = restoreKey;
+    if (!savedView) return;
+
+    const restoreTimeout = setTimeout(() => {
+      const currentChart = chartRef.current;
+      if (!currentChart) return;
+      if (Number.isFinite(savedView.barSpace) && savedView.barSpace > 0) {
+        currentChart.setBarSpace(savedView.barSpace);
+      }
+      const lastIndex = currentChart.getDataList().length - 1;
+      if (lastIndex >= 0) {
+        currentChart.scrollToDataIndex(
+          Math.max(0, Math.min(savedView.lastVisibleIndex, lastIndex)),
+        );
+      }
+    }, 0);
+
+    return () => clearTimeout(restoreTimeout);
+  }, [aggregatedData.length, containerId, isReady, symbol, timeframe]);
 
   useEffect(() => {
     const chart = chartRef.current;

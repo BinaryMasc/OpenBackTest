@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Candle } from '../../src/types';
 import type { MarketDataConnection } from '../../src/services/marketData';
 import { registerMarketDataSource } from '../../src/services/marketDataRegistry';
-import { useMarketDataStore } from '../../src/store/useMarketDataStore';
+import { RITHMIC_DATA_STALE_AFTER_MS, useMarketDataStore } from '../../src/store/useMarketDataStore';
 import { useBacktestStore } from '../../src/store/useBacktestStore';
 
 describe('useMarketDataStore', () => {
@@ -36,6 +36,11 @@ describe('useMarketDataStore', () => {
       name: 'Test Source',
       connect: async () => connection
     });
+  });
+
+  afterEach(() => {
+    useMarketDataStore.getState().disconnectSource();
+    vi.useRealTimers();
   });
 
   it('connects a provider, loads its first symbol, and streams normalized candles', async () => {
@@ -138,6 +143,35 @@ describe('useMarketDataStore', () => {
     await attempt;
     expect(lateClose).toHaveBeenCalledOnce();
     expect(useMarketDataStore.getState().connectionRef).toBeNull();
+    expect(useMarketDataStore.getState().isConnected).toBe(false);
+  });
+
+  it('marks Rithmic data stale when no candle arrives within the warning window', async () => {
+    vi.useFakeTimers();
+    let statusHandler: ((status: 'connected' | 'disconnected') => void) | undefined;
+    const rithmicLikeConnection: MarketDataConnection = {
+      ...connection,
+      sourceId: 'rithmic',
+      sourceName: 'Rithmic',
+      subscribeStatus: handler => {
+        statusHandler = handler;
+        return { close: vi.fn() };
+      }
+    };
+    registerMarketDataSource({
+      id: 'rithmic',
+      name: 'Rithmic',
+      connect: async () => rithmicLikeConnection
+    });
+
+    await useMarketDataStore.getState().connectSource('rithmic');
+    expect(useMarketDataStore.getState().isDataStale).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(RITHMIC_DATA_STALE_AFTER_MS + 1000);
+    expect(useMarketDataStore.getState().isDataStale).toBe(true);
+
+    statusHandler?.('disconnected');
+    expect(useMarketDataStore.getState().isConnectionLost).toBe(true);
     expect(useMarketDataStore.getState().isConnected).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BarChart3, CircleOff, Loader, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, CircleOff, Loader, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useExecutionStore } from '../store/useExecutionStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
@@ -58,6 +58,7 @@ export function ActualAccountPanel() {
   const [orderSize, setOrderSize] = useState(1);
   const [orderType, setOrderType] = useState<OrderType>('market');
   const [limitPrice, setLimitPrice] = useState('');
+  const [isAccountInfoExpanded, setIsAccountInfoExpanded] = useState(false);
   useEffect(() => {
     void connect();
     return () => useExecutionStore.getState().disconnect();
@@ -188,25 +189,47 @@ export function ActualAccountPanel() {
 
       {snapshot && (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Equity" value={formatCurrency(snapshot.equity)} />
-            <StatCard label="Balance" value={formatCurrency(snapshot.balance)} />
-            <StatCard label="Realized P&L" value={formatCurrency(snapshot.realizedPnL)} valueClass={pnlClass(snapshot.realizedPnL)} />
-            <StatCard label="Open P&L" value={formatCurrency(snapshot.unrealizedPnL)} valueClass={pnlClass(snapshot.unrealizedPnL)} />
-            <StatCard label="Net P&L" value={formatCurrency(netPnL)} valueClass={pnlClass(netPnL)} />
-            <StatCard label="Commissions" value={formatCurrency(snapshot.commissions)} />
+          <div>
+            <button
+              type="button"
+              onClick={() => setIsAccountInfoExpanded(expanded => !expanded)}
+              aria-expanded={isAccountInfoExpanded}
+              aria-controls="live-account-information"
+              className="mb-1 flex w-full items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:text-slate-300"
+            >
+              <span className="flex items-center gap-1.5">
+                <Wallet size={12} />
+                Account Information
+              </span>
+              <ChevronDown
+                size={14}
+                className={`transition-transform duration-200 ${isAccountInfoExpanded ? '' : '-rotate-90'}`}
+              />
+            </button>
+
+            {isAccountInfoExpanded && (
+              <div id="live-account-information" className="grid grid-cols-2 gap-3 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <StatCard label="Equity" value={formatCurrency(snapshot.equity)} />
+                <StatCard label="Balance" value={formatCurrency(snapshot.balance)} />
+                <StatCard label="Open P&L" value={formatCurrency(snapshot.unrealizedPnL)} valueClass={pnlClass(snapshot.unrealizedPnL)} />
+                <StatCard label="Realized P&L" value={formatCurrency(snapshot.realizedPnL)} valueClass={pnlClass(snapshot.realizedPnL)} />
+                <StatCard label="Net P&L" value={formatCurrency(netPnL)} valueClass={pnlClass(netPnL)} />
+                {/* <StatCard label="Commissions" value={formatCurrency(snapshot.commissions)} /> */}
+                <StatCard label="Daily P&L" value={formatCurrency(snapshot.statistics.dailyPnL)} valueClass={pnlClass(snapshot.statistics.dailyPnL)} />
+                <StatCard label="Open Positions" value={formatNumber(snapshot.statistics.openPositions)} />
+                <StatCard label="Working Orders" value={formatNumber(snapshot.statistics.workingOrders)} />
+                {/* <StatCard label="Updated" value={new Date(snapshot.updatedAt * 1000).toLocaleTimeString()} /> */}
+              </div>
+            )}
           </div>
 
           <div>
-            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            {/* <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
               <BarChart3 size={12} />
               Live Account Statistics
-            </div>
+            </div> */}
             <div className="grid grid-cols-2 gap-2">
-              <StatCard label="Daily P&L" value={formatCurrency(snapshot.statistics.dailyPnL)} valueClass={pnlClass(snapshot.statistics.dailyPnL)} />
-              <StatCard label="Open Positions" value={formatNumber(snapshot.statistics.openPositions)} />
-              <StatCard label="Working Orders" value={formatNumber(snapshot.statistics.workingOrders)} />
-              <StatCard label="Updated" value={new Date(snapshot.updatedAt * 1000).toLocaleTimeString()} />
+              
             </div>
           </div>
 

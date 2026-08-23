@@ -23,4 +23,17 @@ describe('ChartContainer loading state', () => {
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
+
+  it('shows a visible accessible warning when the market-data feed is unhealthy', () => {
+    const containerRef = { current: null } as React.RefObject<HTMLDivElement | null>;
+    render(
+      <ChartContainer
+        id="chart-warning-test"
+        containerRef={containerRef}
+        connectionWarning="Rithmic connection lost"
+      />
+    );
+
+    expect(screen.getByRole('alert', { name: 'Rithmic connection lost' })).toBeInTheDocument();
+  });
 });

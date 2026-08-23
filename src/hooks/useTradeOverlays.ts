@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { Chart, OverlayEvent } from 'klinecharts';
 import { useTradeStore } from '../store/useTradeStore';
 import { useBacktestStore } from '../store/useBacktestStore';
@@ -7,6 +7,13 @@ import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useChartStyleStore } from '../store/useChartStyleStore';
 import type { ExecutionPosition, OrderUpdate } from '../services/execution';
 import type { MarketSymbol } from '../types';
+import {
+  EMPTY_STORED_TRADE_ARROWS,
+  getSymbolKey,
+  useChartStateStore,
+  type StoredTradeArrow,
+  type StoredTradeMode
+} from '../store/useChartStateStore';
 
 const WORKING_ORDER_STATUSES = new Set(['pending', 'working', 'partially-filled']);
 
@@ -75,6 +82,36 @@ function getProtectiveOrderLabel(order: OrderUpdate, position: ExecutionPosition
   return null;
 }
 
+/**
+ * KlineCharts resolves a timestamp to the nearest candle. That can move a
+ * trade marker to an adjacent candle when the chart is aggregated or when a
+ * trade occurs between two candle timestamps. Use the candle containing the
+ * trade instead: the last chart candle whose start is at or before the trade.
+ */
+export function findContainingCandleIndex(
+  dataList: Array<{ timestamp?: number }>,
+  tradeTimestamp: number
+): number {
+  if (dataList.length === 0) return 0;
+
+  let low = 0;
+  let high = dataList.length - 1;
+  if ((dataList[0].timestamp ?? 0) >= tradeTimestamp) return 0;
+  if ((dataList[high].timestamp ?? 0) <= tradeTimestamp) return high;
+
+  while (low + 1 < high) {
+    const middle = Math.floor((low + high) / 2);
+    const middleTimestamp = dataList[middle].timestamp ?? 0;
+    if (middleTimestamp <= tradeTimestamp) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+
+  return low;
+}
+
 export function useTradeOverlays(
   chartRef: React.MutableRefObject<Chart | null>,
   chartReady = true
@@ -95,6 +132,53 @@ export function useTradeOverlays(
   const setStopLoss = useTradeStore(state => state.setStopLoss);
   const upColor = useChartStyleStore(state => state.upColor);
   const downColor = useChartStyleStore(state => state.downColor);
+
+  const storedTradeMode: StoredTradeMode = mode === 'live' ? 'live' : 'simulation';
+  const tradePersistenceKey = `${storedTradeMode}:${currentSymbol.trim().toUpperCase()}`;
+  const currentTradeArrows = useMemo<StoredTradeArrow[]>(() => {
+    if (mode === 'live') {
+      return liveFills
+        .filter(fill => sameSymbol(fill.symbol, currentSymbol))
+        .map((fill, index) => ({
+          id: `${fill.orderId}_${fill.time}_${index}`,
+          side: fill.side,
+          price: fill.price,
+          time: fill.time,
+        }));
+    }
+
+    return tradeHistory.map(trade => ({
+      id: trade.id,
+      side: trade.type,
+      price: trade.price,
+      time: trade.time,
+    }));
+  }, [currentSymbol, liveFills, mode, tradeHistory]);
+  // Read the persisted arrows during each render so a reset/clear action is
+  // reflected without maintaining a second piece of React state. The store
+  // returns stable array references until that symbol/mode changes.
+  const storedTradeArrows = currentSymbol
+    ? useChartStateStore.getState().bySymbol[getSymbolKey(currentSymbol)]?.trades?.[storedTradeMode]
+      ?? EMPTY_STORED_TRADE_ARROWS
+    : EMPTY_STORED_TRADE_ARROWS;
+  const previousTradePersistenceKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!currentSymbol) return;
+    if (
+      previousTradePersistenceKeyRef.current !== null
+      && previousTradePersistenceKeyRef.current !== tradePersistenceKey
+    ) {
+      // A symbol or mode switch must not save the previous source under the
+      // new key before the new source has produced a trade.
+      previousTradePersistenceKeyRef.current = tradePersistenceKey;
+      return;
+    }
+    previousTradePersistenceKeyRef.current = tradePersistenceKey;
+    if (currentTradeArrows.length > 0) {
+      useChartStateStore.getState().saveTrades(currentSymbol, storedTradeMode, currentTradeArrows);
+    }
+  }, [currentSymbol, currentTradeArrows, storedTradeMode, tradePersistenceKey]);
 
   const isDraggingRef = useRef(false);
 
@@ -332,20 +416,25 @@ export function useTradeOverlays(
 
     // Sync trade history
     chart.removeOverlay({ groupId: 'trade_history_group' });
-    const history = mode === 'live'
-      ? liveFills.filter(fill => sameSymbol(fill.symbol, currentSymbol))
-      : tradeHistory;
+    const history = currentTradeArrows.length > 0
+      ? currentTradeArrows
+      : storedTradeArrows;
     if (showTradeHistory && history.length > 0) {
       history.forEach((trade, index) => {
-        const tradeType = 'side' in trade ? trade.side : trade.type;
+        const tradeType = trade.side;
+        const tradeTimestamp = trade.time * 1000;
+        const dataList = typeof chart.getDataList === 'function' ? chart.getDataList() : [];
+        const tradePoint = dataList.length > 0
+          ? { dataIndex: findContainingCandleIndex(dataList, tradeTimestamp), value: trade.price }
+          : { timestamp: tradeTimestamp, value: trade.price };
         chart.createOverlay({
-          id: `trade_${'id' in trade ? trade.id : `${trade.orderId}_${trade.time}_${index}`}`,
+          id: `trade_${trade.id || `${trade.time}_${index}`}`,
           name: 'tradeArrow',
           groupId: 'trade_history_group',
           extendData: { type: tradeType, color: '#ffffff' },
-          points: [{ timestamp: trade.time * 1000, value: trade.price }]
+          points: [tradePoint]
         });
       });
     }
-  }, [chartRef, chartReady, mode, currentSymbol, currentPrice, accountState, marketSymbols, contractSize, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, tradeHistory, liveFills, showTradeHistory, upColor, downColor]);
+  }, [chartRef, chartReady, mode, currentSymbol, currentPrice, accountState, marketSymbols, contractSize, cancelOrder, placeOrder, position, entryPrice, activePositionSize, unrealizedPnL, takeProfit, stopLoss, setTakeProfit, setStopLoss, currentTradeArrows, storedTradeArrows, showTradeHistory, upColor, downColor]);
 }

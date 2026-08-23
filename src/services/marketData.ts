@@ -5,6 +5,8 @@ export interface MarketDataSubscription {
   close: () => void;
 }
 
+export type MarketDataConnectionStatus = 'connected' | 'disconnected';
+
 export interface MarketDataConnectionOptions {
   credentials?: Record<string, string>;
   settings?: Record<string, string | number | boolean>;
@@ -32,6 +34,14 @@ export interface MarketDataConnection {
     symbol: string,
     interval: string,
     onCandle: (candle: Candle) => void
+  ) => MarketDataSubscription;
+  /**
+   * Optional transport-level status notifications. Polling providers do not
+   * need to implement this because their candle subscription owns the retry
+   * loop, while socket-backed providers can report an unexpected disconnect.
+   */
+  subscribeStatus?: (
+    onStatusChange: (status: MarketDataConnectionStatus) => void
   ) => MarketDataSubscription;
   /**
    * Providers that also expose broker execution can share their authenticated

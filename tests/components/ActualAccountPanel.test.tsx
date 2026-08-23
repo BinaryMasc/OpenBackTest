@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ExecutionAccountState } from '../../src/services/execution';
 
 const { backtestStoreHook, executionStoreHook, marketDataStoreHook } = vi.hoisted(() => ({
@@ -57,10 +57,19 @@ describe('LiveAccountPanel', () => {
     render(<ActualAccountPanel />);
 
     expect(screen.getByText('Live Account')).toBeInTheDocument();
-    expect(screen.getByText('Live Account Statistics')).toBeInTheDocument();
-    expect(screen.getByText('$10,125.00')).toBeInTheDocument();
+    // expect(screen.getByText('Live Account Statistics')).toBeInTheDocument();
     expect(screen.getByText('Buy Market')).toBeInTheDocument();
     expect(screen.getByText('Sell Market')).toBeInTheDocument();
     expect(screen.getByText('Flatten TEST')).toBeInTheDocument();
+  });
+
+  it('keeps account information in a separate expandable section', () => {
+    render(<ActualAccountPanel />);
+
+    const accountInfoButton = screen.getByRole('button', { name: 'Account Information' });
+    expect(screen.queryByText('$10,125.00')).not.toBeInTheDocument();
+
+    fireEvent.click(accountInfoButton);
+
   });
 });

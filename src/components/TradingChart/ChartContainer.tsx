@@ -1,16 +1,17 @@
 import { useChartStyleStore } from '../../store/useChartStyleStore';
-import { ArrowRight, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowRight, RefreshCw } from 'lucide-react';
 
 interface ChartContainerProps {
   id: string;
   containerRef: React.RefObject<HTMLDivElement | null>;
   isLoading?: boolean;
   loadingMessage?: string;
+  connectionWarning?: string;
   onFitChart?: () => void;
   onRefreshData?: () => void;
 }
 
-export function ChartContainer({ id, containerRef, isLoading = false, loadingMessage = 'Loading market data', onFitChart, onRefreshData }: ChartContainerProps) {
+export function ChartContainer({ id, containerRef, isLoading = false, loadingMessage = 'Loading market data', connectionWarning, onFitChart, onRefreshData }: ChartContainerProps) {
   const backgroundColor = useChartStyleStore(state => state.backgroundColor);
 
   return (
@@ -41,6 +42,18 @@ export function ChartContainer({ id, containerRef, isLoading = false, loadingMes
           <RefreshCw size={15} />
         </button>
       </div>
+
+      {connectionWarning && (
+        <div
+          className="absolute right-15 top-3 z-40 flex items-center gap-1.5 rounded-lg border border-orange-400/40 bg-dark-800/95 px-2 py-1.5 text-orange-300 shadow-lg"
+          role="alert"
+          aria-label={connectionWarning}
+          title={connectionWarning}
+        >
+          <AlertTriangle className="animate-pulse" size={17} aria-hidden="true" />
+          {/* <span className="text-[11px] font-semibold">Data feed warning</span> */}
+        </div>
+      )}
 
       {isLoading && (
         <div

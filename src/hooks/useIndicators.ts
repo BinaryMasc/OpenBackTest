@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 import type { Chart } from 'klinecharts';
 import { LineType } from 'klinecharts';
@@ -10,6 +10,7 @@ import {
 } from '../lib/chart/constants';
 import { isOscillatorIndicator } from '../lib/chart/utils';
 import { hexToRgba } from '../lib/chart/utils';
+import { useChartStateStore } from '../store/useChartStateStore';
 
 /**
  * Overlay indicators where each calcParam = one independent line.
@@ -18,11 +19,37 @@ import { hexToRgba } from '../lib/chart/utils';
  */
 const MERGEABLE_OVERLAYS = new Set(['MA', 'EMA', 'SMA']);
 
-export function useIndicators(chartRef: React.RefObject<Chart | null>) {
+interface UseIndicatorsOptions {
+  chartId: string;
+  chartReady: boolean;
+  symbol: string;
+}
+
+function removeIndicatorInstances(chart: Chart, instances: IndicatorInstance[]): void {
+  const removed = new Set<string>();
+  instances.forEach(instance => {
+    const key = `${instance.paneId}:${instance.name}`;
+    if (removed.has(key)) return;
+    removed.add(key);
+    chart.removeIndicator(instance.paneId, instance.name);
+  });
+}
+
+export function useIndicators(
+  chartRef: React.RefObject<Chart | null>,
+  {
+    chartId = 'chart-1',
+    chartReady = true
+  }: Partial<UseIndicatorsOptions> = {}
+) {
   const [instances, setInstances] = useState<IndicatorInstance[]>([]);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const colorIndexRef = useRef(0);
+  const instancesRef = useRef<IndicatorInstance[]>([]);
+  const hydratedKeyRef = useRef<string | null>(null);
+
+  const persistenceKey = chartId;
 
   const nextColor = useCallback(() => {
     const color = INDICATOR_DEFAULT_COLORS[colorIndexRef.current % INDICATOR_DEFAULT_COLORS.length];
@@ -72,6 +99,89 @@ export function useIndicators(chartRef: React.RefObject<Chart | null>) {
     },
     [],
   );
+
+  const restoreInstances = useCallback((chart: Chart, restoredInstances: IndicatorInstance[]) => {
+    const oscillatorInstances = restoredInstances.filter(instance => isOscillatorIndicator(instance.name));
+    const standaloneInstances = restoredInstances.filter(instance =>
+      !isOscillatorIndicator(instance.name) && !MERGEABLE_OVERLAYS.has(instance.name),
+    );
+
+    oscillatorInstances.forEach(instance => {
+      chart.createIndicator(
+        { name: instance.name, calcParams: instance.calcParams },
+        false,
+        { id: instance.paneId },
+      );
+      chart.overrideIndicator(
+        {
+          name: instance.name,
+          visible: instance.visible,
+          styles: {
+            lines: [{
+              size: 2,
+              style: LineType.Solid,
+              smooth: false,
+              dashedValue: [2, 2],
+              color: hexToRgba(instance.color, instance.opacity),
+            }]
+          }
+        },
+        instance.paneId,
+      );
+    });
+
+    standaloneInstances.forEach(instance => {
+      chart.createIndicator(
+        { name: instance.name, calcParams: instance.calcParams },
+        true,
+        { id: 'candle_pane' },
+      );
+      chart.overrideIndicator(
+        {
+          name: instance.name,
+          visible: instance.visible,
+          styles: {
+            lines: [{
+              size: 2,
+              style: LineType.Solid,
+              smooth: false,
+              dashedValue: [2, 2],
+              color: hexToRgba(instance.color, instance.opacity),
+            }]
+          }
+        },
+        'candle_pane',
+      );
+    });
+
+    MERGEABLE_OVERLAYS.forEach(name => syncOverlay(chart, name, restoredInstances));
+  }, [syncOverlay]);
+
+  useEffect(() => {
+    instancesRef.current = instances;
+  }, [instances]);
+
+  // Restore the chart-specific indicators after the chart instance is ready.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !chartReady || hydratedKeyRef.current === persistenceKey) return;
+
+    removeIndicatorInstances(chart, instancesRef.current);
+    const restoredInstances = useChartStateStore.getState().getIndicators(chartId);
+    setInstances(restoredInstances);
+    instancesRef.current = restoredInstances;
+    colorIndexRef.current = restoredInstances.length;
+    setEditingInstanceId(null);
+    restoreInstances(chart, restoredInstances);
+    hydratedKeyRef.current = persistenceKey;
+  }, [chartId, chartReady, chartRef, persistenceKey, restoreInstances]);
+
+  useEffect(() => {
+    // A restore effect can update the ref before this effect runs in the same
+    // commit. Do not let the pre-restore render overwrite saved indicators.
+    if (instances !== instancesRef.current || hydratedKeyRef.current !== persistenceKey) return;
+    useChartStateStore.getState().saveIndicators(chartId, instances);
+  }, [chartId, instances, persistenceKey]);
 
   /** Add a new indicator instance */
   const addIndicator = useCallback(

@@ -261,4 +261,18 @@ describe('RithmicService', () => {
 
     connection.close();
   });
+
+  it('reports an unexpected gateway disconnect to status subscribers', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+
+    const connection = await RithmicService.connect({
+      credentials: { username: 'test-user', password: 'test-password' }
+    });
+    const onStatusChange = vi.fn();
+    connection.subscribeStatus?.(onStatusChange);
+
+    FakeWebSocket.lastInstance?.close();
+
+    expect(onStatusChange).toHaveBeenCalledWith('disconnected');
+  });
 });

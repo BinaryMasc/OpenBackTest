@@ -45,6 +45,8 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const symbol = useBacktestStore(state => state.symbol);
   const marketDataLoading = useMarketDataStore(state => state.isLoading);
   const marketDataSourceId = useMarketDataStore(state => state.sourceId);
+  const marketDataConnectionLost = useMarketDataStore(state => state.isConnectionLost);
+  const marketDataIsStale = useMarketDataStore(state => state.isDataStale);
   const marketDataSymbol = useMarketDataStore(state => state.symbol);
   const refreshMarketData = useMarketDataStore(state => state.setSymbol);
   const accountState = useExecutionStore(state => state.accountState);
@@ -65,8 +67,15 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     return aggregateCandles(chartData, timeframe);
   }, [rawData, currentIndex, timeframe, marketDataSourceId]);
 
-  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, aggregatedData, timeframe });
+  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, symbol, aggregatedData, timeframe });
   const isLiveDataLoading = marketDataLoading && marketDataSourceId !== null;
+  const connectionWarning = marketDataSourceId === 'rithmic'
+    ? marketDataConnectionLost
+      ? 'Rithmic connection lost'
+      : marketDataIsStale
+        ? 'No Rithmic market data received recently'
+        : undefined
+    : undefined;
 
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
   const [overlayColor, setOverlayColor] = useState('#2196F3');
@@ -113,7 +122,11 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
 
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();
 
-  const indicators = useIndicators(chartRef);
+  const indicators = useIndicators(chartRef, {
+    chartId: id,
+    chartReady,
+    symbol,
+  });
   useTradeOverlays(chartRef, chartReady);
 
   const handleOverlayCreated = useCallback((overlay: Overlay) => {
@@ -224,6 +237,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
             id={id}
             containerRef={containerRef}
             isLoading={isLiveDataLoading}
+            connectionWarning={connectionWarning}
             onFitChart={handleFitChart}
             onRefreshData={handleRefreshData}
           />

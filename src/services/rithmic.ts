@@ -11,7 +11,8 @@ import type {
   MarketDataConnection,
   MarketDataConnectionOptions,
   MarketDataSource,
-  MarketDataSubscription
+  MarketDataSubscription,
+  MarketDataConnectionStatus
 } from './marketData';
 
 export const RITHMIC_SOURCE_ID = 'rithmic';
@@ -84,6 +85,7 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
   private readonly socket: WebSocket;
   private readonly symbols: MarketSymbol[];
   private readonly candleHandlers = new Set<(candle: Candle) => void>();
+  private readonly statusHandlers = new Set<(status: MarketDataConnectionStatus) => void>();
   private readonly pendingCandles = new Map<string, Candle>();
   private readonly candleFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly accountHandlers = new Map<string, Set<(state: ExecutionAccountState) => void>>();
@@ -130,6 +132,8 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
     };
 
     socket.onclose = () => {
+      this.statusHandlers.forEach(handler => handler('disconnected'));
+      this.statusHandlers.clear();
       this.pending.forEach(request => {
         clearTimeout(request.timeout);
         request.reject(new Error('Rithmic gateway disconnected'));
@@ -254,6 +258,11 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
     };
   };
 
+  subscribeStatus = (onStatusChange: (status: MarketDataConnectionStatus) => void): MarketDataSubscription => {
+    this.statusHandlers.add(onStatusChange);
+    return { close: () => this.statusHandlers.delete(onStatusChange) };
+  };
+
   getExecutionConnection = (): ExecutionConnection => this;
 
   listAccounts = async (): Promise<ExecutionAccount[]> => {
@@ -335,6 +344,7 @@ class RithmicGatewayConnection implements MarketDataConnection, ExecutionConnect
     this.accountHandlers.clear();
     this.orderHandlers.clear();
     this.fillHandlers.clear();
+    this.statusHandlers.clear();
     this.socket.close();
   };
 

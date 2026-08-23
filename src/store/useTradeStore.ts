@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useBacktestStore } from './useBacktestStore';
+import { useChartStateStore } from './useChartStateStore';
 
 export type PositionType = 'long' | 'short' | 'flat';
 export interface Trade {
@@ -107,7 +108,11 @@ export const useTradeStore = create<TradeState>((set, get) => ({
 
   setShowTradeHistory: (show: boolean) => set({ showTradeHistory: show }),
   setShowStatsModal: (show: boolean) => set({ showStatsModal: show }),
-  clearTradeHistory: () => set({ tradeHistory: [] }),
+  clearTradeHistory: () => {
+    set({ tradeHistory: [] });
+    const symbol = useBacktestStore.getState().symbol;
+    if (symbol) useChartStateStore.getState().clearTrades(symbol, 'simulation');
+  },
 
   buy: (price: number) => {
     const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent, positionSymbol } = get();
@@ -675,25 +680,29 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   setContractSize: (val: number) => set({ contractSize: val }),
   setFeePercent: (val: number) => set({ feePercent: val }),
 
-  reset: () => set((state) => ({
-    balance: state.initialBalance,
-    realizedPnL: 0,
-    unrealizedPnL: 0,
-    position: 'flat',
-    positionSymbol: null,
-    entryPrice: null,
-    activePositionSize: 0,
-    orderSize: 1,
-    takeProfit: null,
-    stopLoss: null,
-    isBlown: false,
-    hasTraded: false,
-    tradeHistory: [],
-    isFinished: false,
-    showStatsModal: false,
-    finishedPositions: [],
-    currentPositionTrades: []
-  })),
+  reset: () => {
+    set(state => ({
+      balance: state.initialBalance,
+      realizedPnL: 0,
+      unrealizedPnL: 0,
+      position: 'flat',
+      positionSymbol: null,
+      entryPrice: null,
+      activePositionSize: 0,
+      orderSize: 1,
+      takeProfit: null,
+      stopLoss: null,
+      isBlown: false,
+      hasTraded: false,
+      tradeHistory: [],
+      isFinished: false,
+      showStatsModal: false,
+      finishedPositions: [],
+      currentPositionTrades: []
+    }));
+    const symbol = useBacktestStore.getState().symbol;
+    if (symbol) useChartStateStore.getState().clearTrades(symbol, 'simulation');
+  },
 
   finishSimulation: () => {
     const { position, flat, isFinished } = get();

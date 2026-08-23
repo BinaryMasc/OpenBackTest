@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Candle, Timeframe, ChartConfig } from '../types';
 import { MAX_SYNTHETIC_CANDLE_GAP_SECONDS } from '../utils/candleGaps';
+import { useChartStateStore } from './useChartStateStore';
 
 
 interface BacktestState {
@@ -44,14 +45,30 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   uploadProgress: 0,
   mode: 'playback',
 
-  loadData: (data: Candle[], symbol?: string) => set({ 
-    rawData: data, 
-    symbol: symbol ?? '',
-    currentIndex: get().mode === 'live' ? data.length - 1 : Math.min(100, data.length - 1),
-    isPlaying: false,
-    isUploading: false,
-    uploadProgress: 0
-  }),
+  loadData: (data: Candle[], symbol?: string) => {
+    const nextSymbol = symbol ?? '';
+    const persistedCharts = nextSymbol
+      ? useChartStateStore.getState().getStateForSymbol(nextSymbol)?.charts
+      : undefined;
+    const currentState = get();
+    const charts = persistedCharts && persistedCharts.length > 0
+      ? persistedCharts
+      : currentState.charts;
+
+    set({
+      rawData: data,
+      symbol: nextSymbol,
+      charts,
+      currentIndex: currentState.mode === 'live' ? data.length - 1 : Math.min(100, data.length - 1),
+      isPlaying: false,
+      isUploading: false,
+      uploadProgress: 0
+    });
+
+    if (nextSymbol && !persistedCharts) {
+      useChartStateStore.getState().saveCharts(nextSymbol, charts);
+    }
+  },
 
   setUploading: (uploading: boolean) => set({ isUploading: uploading }),
   setUploadProgress: (progress: number) => set({ uploadProgress: progress }),
@@ -64,17 +81,27 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     currentIndex: Math.max(state.currentIndex - 1, 0)
   })),
 
-  addChart: (config: ChartConfig) => set((state) => ({
-    charts: state.charts.length < 3 ? [...state.charts, config] : state.charts
-  })),
+  addChart: (config: ChartConfig) => {
+    const state = get();
+    if (state.charts.length >= 3) return;
+    const charts = [...state.charts, config];
+    set({ charts });
+    if (state.symbol) useChartStateStore.getState().saveCharts(state.symbol, charts);
+  },
 
-  removeChart: (id: string) => set((state) => ({
-    charts: state.charts.filter(c => c.id !== id)
-  })),
+  removeChart: (id: string) => {
+    const state = get();
+    const charts = state.charts.filter(c => c.id !== id);
+    set({ charts });
+    if (state.symbol) useChartStateStore.getState().saveCharts(state.symbol, charts);
+  },
 
-  setChartTimeframe: (id: string, tf: Timeframe) => set((state) => ({
-    charts: state.charts.map(c => c.id === id ? { ...c, timeframe: tf } : c)
-  })),
+  setChartTimeframe: (id: string, tf: Timeframe) => {
+    const state = get();
+    const charts = state.charts.map(c => c.id === id ? { ...c, timeframe: tf } : c);
+    set({ charts });
+    if (state.symbol) useChartStateStore.getState().saveCharts(state.symbol, charts);
+  },
 
   togglePlayback: () => set((state) => ({ isPlaying: !state.isPlaying })),
 
@@ -109,11 +136,15 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
     // Migrate sessions saved before the mode was renamed from Actual to Live.
     const importedMode = (state as { mode?: string }).mode;
     const mode = importedMode === 'actual' ? 'live' : importedMode;
-    return {
+    const nextState = {
       ...prev,
       ...state,
       ...(mode ? { mode: mode as BacktestState['mode'] } : {})
     };
+    if (nextState.symbol && nextState.charts) {
+      useChartStateStore.getState().saveCharts(nextState.symbol, nextState.charts);
+    }
+    return nextState;
   }),
 
   updateLiveCandle: (kline: Candle) => {
