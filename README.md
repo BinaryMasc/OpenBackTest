@@ -61,14 +61,6 @@ npm run coverage   # Run tests with coverage report
 ```
 
 ### To-Do
-- [x] Session: Import/export current session and trades to continue later.
-- [x] Backtest Data: Show more statistics, calendar view, etc...
 - [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
-- [x] Chart: Ability to change the color of the candles.
-- [x] Data: Real-time connection to live market (Crypto).
-- [x] Data: Provider-neutral market-data connection abstraction.
-- [x] Testing: Establish unit testing foundation for stores, hooks, and components.
-- [ ] Indicators: (Engine) Ability to load dynamic scripts with indicators or strategies in execution-time.
-- [x] Data: Rithmic market-data adapter through a local RAPI+ gateway.
-- [x] Trading: Provider-neutral live-account contract with Rithmic adapter.
-- [ ] Trading: Additional execution adapters (for example, Binance).
+- [ ] Custom Indicators (Engine): Ability to load dynamic scripts with indicators or strategies in execution-time.
+- [ ] Expert Advisors (Engine): Algorithmic trading and backtest engine integration.
