@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BarChart3, ChevronDown, CircleOff, Loader, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { AlertTriangle, ChevronDown, CircleOff, Loader, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useExecutionStore } from '../store/useExecutionStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
