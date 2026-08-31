@@ -59,8 +59,9 @@ export function registerCustomOverlays(): void {
         const right = Math.max(coordinates[0].x, coordinates[1].x);
         const top = bounding.top ?? 0;
         const bottom = bounding.bottom ?? bounding.height ?? top;
-        const data = overlay.extendData as { color?: string } | undefined;
+        const data = overlay.extendData as { color?: string; showHandles?: boolean } | undefined;
         const accent = data?.color ?? color;
+        const handleColor = data?.showHandles ? accent : 'transparent';
         return [
           {
             type: 'polygon',
@@ -80,12 +81,12 @@ export function registerCustomOverlays(): void {
           {
             type: 'circle',
             attrs: { x: coordinates[0].x, y: coordinates[0].y, r: 5 },
-            styles: { color: accent, style: 'stroke_fill', borderColor: accent, borderSize: 1 },
+            styles: { color: handleColor, style: 'stroke_fill', borderColor: handleColor, borderSize: 1 },
           },
           {
             type: 'circle',
             attrs: { x: coordinates[1].x, y: coordinates[1].y, r: 5 },
-            styles: { color: accent, style: 'stroke_fill', borderColor: accent, borderSize: 1 },
+            styles: { color: handleColor, style: 'stroke_fill', borderColor: handleColor, borderSize: 1 },
           },
         ];
       },

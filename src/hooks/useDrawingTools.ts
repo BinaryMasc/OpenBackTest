@@ -62,6 +62,7 @@ export function useDrawingTools({
       },
       onSelected: (event: { overlay: Overlay }) => {
         selectedForDeleteRef.current = event.overlay.id;
+        if (isAnchoredRange) onOverlaySelected(event.overlay);
         if (event.overlay.name === 'trade') {
           chart.overrideOverlay({ id: event.overlay.id, extendData: { ...event.overlay.extendData, selected: true } });
         }

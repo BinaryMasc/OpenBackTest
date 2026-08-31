@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import type { Overlay } from 'klinecharts';
 import { useBacktestStore } from '../../store/useBacktestStore';
 import { aggregateCandles } from '../../utils/aggregation';
@@ -93,6 +93,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     : undefined;
 
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
+  const activeAnchoredOverlayRef = useRef<Overlay | null>(null);
   const [overlayColor, setOverlayColor] = useState('#2196F3');
   const [overlayOpacity, setOverlayOpacity] = useState(0.5);
   const [overlayFontSize, setOverlayFontSize] = useState(12);
@@ -141,6 +142,33 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     setSelectedOverlay(overlay);
   }, []);
 
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const previous = activeAnchoredOverlayRef.current;
+    if (previous && (!selectedOverlay || previous.id !== selectedOverlay.id)) {
+      const extendData = previous.extendData && typeof previous.extendData === 'object'
+        ? previous.extendData as Record<string, unknown>
+        : {};
+      chart.overrideOverlay({
+        id: previous.id,
+        extendData: { ...extendData, showHandles: false },
+      });
+      activeAnchoredOverlayRef.current = null;
+    }
+
+    if (selectedOverlay && getAnchoredIndicatorForRangeOverlay(selectedOverlay.name)) {
+      const extendData = selectedOverlay.extendData && typeof selectedOverlay.extendData === 'object'
+        ? selectedOverlay.extendData as Record<string, unknown>
+        : {};
+      chart.overrideOverlay({
+        id: selectedOverlay.id,
+        extendData: { ...extendData, showHandles: true },
+      });
+      activeAnchoredOverlayRef.current = selectedOverlay;
+    }
+  }, [chartRef, selectedOverlay]);
+
   const indicators = useIndicators(chartRef, {
     chartId: id,
     chartReady,
@@ -188,7 +216,19 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     indicators.setEditingInstanceId(id);
     const instance = indicators.instances.find(item => item.id === id);
     if (!instance || (instance.name !== 'AVWAP' && instance.name !== 'AVP')) return;
-  }, [indicators]);
+
+    const overlayId = instance.rangeOverlayId ?? `${instance.id}_range`;
+    const overlay = chartRef.current?.getOverlayById(overlayId);
+    if (!overlay) return;
+    const extendData = overlay.extendData && typeof overlay.extendData === 'object'
+      ? overlay.extendData as Record<string, unknown>
+      : {};
+    chartRef.current?.overrideOverlay({
+      id: overlay.id,
+      extendData: { ...extendData, showHandles: true },
+    });
+    selectedForDeleteRef.current = overlay.id;
+  }, [chartRef, indicators, selectedForDeleteRef]);
 
   const handleAddIndicator = useCallback((name: string) => {
     const rangeOverlay = getRangeOverlayForAnchoredIndicator(name);

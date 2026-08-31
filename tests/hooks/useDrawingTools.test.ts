@@ -167,4 +167,28 @@ describe('useDrawingTools', () => {
     });
     expect(onOverlaySelected).toHaveBeenCalledWith(mockEvent.overlay);
   });
+
+  it('selects anchored ranges when their overlay is clicked', () => {
+    const { result } = renderHook(() => useDrawingTools({
+      chartRef,
+      containerRef,
+      overlayColor: '#ffffff',
+      overlayOpacity: 1,
+      overlayFontSize: 12,
+      onOverlayCreated,
+      onOverlaySelected,
+    }));
+
+    act(() => {
+      result.current.handleToolClick('anchoredVWAPRange');
+    });
+
+    const createOverlayArgs = mockChart.createOverlay.mock.calls[0][0];
+    const overlay = { id: 'overlay-123', name: 'anchoredVWAPRange' };
+    act(() => {
+      createOverlayArgs.onSelected({ overlay });
+    });
+
+    expect(onOverlaySelected).toHaveBeenCalledWith(overlay);
+  });
 });

@@ -331,7 +331,7 @@ export function useIndicators(
       const calcParams = isAnchored && range
         ? name === 'AVWAP'
           ? [range.startTimestamp, range.endTimestamp]
-          : [range.startTimestamp, range.endTimestamp, ...(DEFAULT_INDICATOR_PARAMS[name] || [120, 15, 70])]
+          : [range.startTimestamp, range.endTimestamp, 120, 15, 70]
         : isMergeable
         ? [DEFAULT_INDICATOR_PARAMS[name]?.[0] ?? 14]
         : [...(DEFAULT_INDICATOR_PARAMS[name] || [])];

@@ -73,6 +73,14 @@ describe('custom overlay renderers', () => {
     expect(figures[0].attrs.coordinates).toEqual([
       { x: 20, y: 0 }, { x: 120, y: 0 }, { x: 120, y: 400 }, { x: 20, y: 400 },
     ]);
+    expect(figures[3]).toMatchObject({ type: 'circle', styles: { color: 'transparent' } });
+
+    const activeFigures = config.createPointFigures({
+      coordinates: [point(20, 80), point(120, 140)],
+      bounding: { width: 640, top: 0, bottom: 400 },
+      overlay: { extendData: { showHandles: true, color: '#00ff00' } },
+    });
+    expect(activeFigures[3]).toMatchObject({ type: 'circle', styles: { color: '#00ff00' } });
   });
 
   it('draws a rectangle only after two points are available', () => {
