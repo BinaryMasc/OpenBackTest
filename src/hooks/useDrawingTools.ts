@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chart, Overlay, Point, OverlayCreate } from 'klinecharts';
-import { DRAWING_GROUP_ID } from '../lib/chart/constants';
+import { DRAWING_GROUP_ID, INDICATOR_RANGE_GROUP_ID } from '../lib/chart/constants';
 import { hexToRgba } from '../lib/chart/utils';
 
 interface UseDrawingToolsOptions {
@@ -10,6 +10,7 @@ interface UseDrawingToolsOptions {
   overlayOpacity: number;
   overlayFontSize: number;
   onOverlayCreated: (overlay: Overlay) => void;
+  onOverlayChanged?: (overlay: Overlay) => void;
   onOverlaySelected: (overlay: Overlay | null) => void;
 }
 
@@ -20,6 +21,7 @@ export function useDrawingTools({
   overlayOpacity,
   overlayFontSize,
   onOverlayCreated,
+  onOverlayChanged,
   onOverlaySelected,
 }: UseDrawingToolsOptions) {
   const [activeTool, setActiveTool] = useState<string | null>(null);
@@ -39,10 +41,11 @@ export function useDrawingTools({
 
     const rgba = hexToRgba(overlayColor, overlayOpacity);
     const overlayId = `overlay_${Date.now()}`;
+    const isAnchoredRange = toolName === 'anchoredVWAPRange' || toolName === 'anchoredVolumeProfileRange';
     const config: OverlayCreate = {
       name: toolName,
       id: overlayId,
-      groupId: DRAWING_GROUP_ID,
+      groupId: isAnchoredRange ? INDICATOR_RANGE_GROUP_ID : DRAWING_GROUP_ID,
       extendData: toolName === 'text' ? 'Text' : undefined,
       styles: {
         line: { color: rgba },
@@ -77,14 +80,24 @@ export function useDrawingTools({
         onOverlaySelected(event.overlay);
         return true;
       },
+      onPressedMoveEnd: (event: { overlay: Overlay }) => {
+        if (isAnchoredRange) onOverlayChanged?.(event.overlay);
+        return true;
+      },
     };
 
     if (toolName === 'trade') {
       config.extendData = { rewardColor: '#22c55e', riskColor: '#ef4444' };
     }
+    if (toolName === 'anchoredVWAPRange' || toolName === 'anchoredVolumeProfileRange') {
+      config.extendData = {
+        label: toolName === 'anchoredVWAPRange' ? 'Anchored VWAP range' : 'Anchored Volume Profile range',
+        color: overlayColor,
+      };
+    }
 
     chart.createOverlay(config);
-  }, [activeTool, chartRef, overlayColor, overlayOpacity, overlayFontSize, onOverlaySelected, onOverlayCreated]);
+  }, [activeTool, chartRef, overlayColor, overlayOpacity, overlayFontSize, onOverlaySelected, onOverlayCreated, onOverlayChanged]);
 
   useEffect(() => {
     const container = containerRef.current;

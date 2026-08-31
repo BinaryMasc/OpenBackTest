@@ -15,7 +15,7 @@ export function hexToRgba(hex: string, alpha: number): string {
 }
 
 export function isOscillatorIndicator(name: string): boolean {
-  return ['VOL', 'RSI', 'MACD'].includes(name);
+  return ['VOL', 'RSI', 'MACD', 'ATR'].includes(name);
 }
 
 export function getPaneId(name: string): string {

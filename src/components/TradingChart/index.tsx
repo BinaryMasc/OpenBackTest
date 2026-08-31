@@ -25,6 +25,10 @@ import { useChartStyleStore } from '../../store/useChartStyleStore';
 import type { Timeframe } from '../../types';
 import { fillShortCandleGaps } from '../../utils/candleGaps';
 import type { ExecutionPosition } from '../../services/execution';
+import {
+  getAnchoredIndicatorForRangeOverlay,
+  getRangeOverlayForAnchoredIndicator,
+} from '../../lib/chart/overlays';
 
 interface TradingChartProps {
   id: string;
@@ -36,6 +40,17 @@ function sameSymbol(left: string, right: string): boolean {
   const normalizedRight = right.trim().toUpperCase();
   return normalizedLeft === normalizedRight
     || normalizedLeft.split('.')[0] === normalizedRight.split('.')[0];
+}
+
+function getOverlayTimestampRange(overlay: Overlay): [number, number] | null {
+  const first = overlay.points[0]?.timestamp;
+  const second = overlay.points[1]?.timestamp;
+  if (typeof first !== 'number' || !Number.isFinite(first) || typeof second !== 'number' || !Number.isFinite(second)) return null;
+  return [Math.min(first, second), Math.max(first, second)];
+}
+
+function isLinkedRangeOverlay(instance: { id: string; rangeOverlayId?: string }, overlayId: string): boolean {
+  return instance.rangeOverlayId === overlayId || `${instance.id}_range` === overlayId;
 }
 
 export function TradingChart({ id, timeframe }: TradingChartProps) {
@@ -126,12 +141,32 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     chartId: id,
     chartReady,
     symbol,
+    dataReady: aggregatedData.length > 0,
   });
   useTradeOverlays(chartRef, chartReady);
+  const [pendingRangeIndicator, setPendingRangeIndicator] = useState<'AVWAP' | 'AVP' | null>(null);
 
   const handleOverlayCreated = useCallback((overlay: Overlay) => {
+    const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
+    const range = getOverlayTimestampRange(overlay);
+    if (anchoredIndicator && range) {
+      indicators.addIndicator(anchoredIndicator, {
+        startTimestamp: range[0],
+        endTimestamp: range[1],
+        overlayId: overlay.id,
+      });
+      setPendingRangeIndicator(null);
+    }
     recordAdd(overlay);
-  }, [recordAdd]);
+  }, [indicators, recordAdd]);
+
+  const handleOverlayChanged = useCallback((overlay: Overlay) => {
+    const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
+    const range = getOverlayTimestampRange(overlay);
+    if (anchoredIndicator && range) {
+      indicators.updateAnchoredRange(overlay.id, range[0], range[1]);
+    }
+  }, [indicators]);
 
   const handleOverlaySelected = useCallback((overlay: Overlay | null) => {
     setSelectedOverlay(overlay);
@@ -144,11 +179,35 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     overlayOpacity,
     overlayFontSize,
     onOverlayCreated: handleOverlayCreated,
+    onOverlayChanged: handleOverlayChanged,
     onOverlaySelected: handleOverlaySelected,
   });
 
+  const handleAddIndicator = useCallback((name: string) => {
+    const rangeOverlay = getRangeOverlayForAnchoredIndicator(name);
+    if (rangeOverlay) {
+      setPendingRangeIndicator(name as 'AVWAP' | 'AVP');
+      indicators.setShowAddMenu(false);
+      handleToolClick(rangeOverlay);
+      return;
+    }
+    indicators.addIndicator(name);
+  }, [handleToolClick, indicators]);
+
+  const removeOverlayAndLinkedIndicator = useCallback((overlay: Overlay) => {
+    const linkedIndicator = indicators.instances.find(instance =>
+      isLinkedRangeOverlay(instance, overlay.id),
+    );
+    if (linkedIndicator) {
+      indicators.removeIndicator(linkedIndicator.id);
+      return;
+    }
+    chartRef.current?.removeOverlay({ id: overlay.id });
+  }, [chartRef, indicators]);
+
   const clearOverlays = useCallback(() => {
     chartRef.current?.removeOverlay({ groupId: DRAWING_GROUP_ID });
+    setPendingRangeIndicator(null);
     setSelectedOverlay(null);
   }, [chartRef]);
 
@@ -158,22 +217,50 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     const overlay = chart.getOverlayById(selectedOverlay.id);
     if (overlay) {
       recordRemove(overlay);
-      chart.removeOverlay({ id: selectedOverlay.id });
+      removeOverlayAndLinkedIndicator(overlay);
     }
     setSelectedOverlay(null);
-  }, [selectedOverlay, chartRef, recordRemove]);
+  }, [selectedOverlay, chartRef, recordRemove, removeOverlayAndLinkedIndicator]);
 
   const handleUndo = useCallback(() => {
     undo(chartRef.current, id => {
       if (selectedOverlay?.id === id) setSelectedOverlay(null);
+      const linkedIndicator = indicators.instances.find(instance =>
+        isLinkedRangeOverlay(instance, id),
+      );
+      if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
+    }, overlay => {
+      const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
+      const range = getOverlayTimestampRange(overlay);
+      if (anchoredIndicator && range) {
+        indicators.addIndicator(anchoredIndicator, {
+          startTimestamp: range[0],
+          endTimestamp: range[1],
+          overlayId: overlay.id,
+        });
+      }
     });
-  }, [undo, chartRef, selectedOverlay]);
+  }, [undo, chartRef, selectedOverlay, indicators]);
 
   const handleRedo = useCallback(() => {
     redo(chartRef.current, overlay => {
       setSelectedOverlay(overlay);
+      const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
+      const range = getOverlayTimestampRange(overlay);
+      if (anchoredIndicator && range) {
+        indicators.addIndicator(anchoredIndicator, {
+          startTimestamp: range[0],
+          endTimestamp: range[1],
+          overlayId: overlay.id,
+        });
+      }
+    }, overlayId => {
+      const linkedIndicator = indicators.instances.find(instance =>
+        isLinkedRangeOverlay(instance, overlayId),
+      );
+      if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
     });
-  }, [redo, chartRef]);
+  }, [redo, chartRef, indicators]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -186,11 +273,39 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
         e.preventDefault();
         undo(chart, id => {
           if (selectedOverlay?.id === id) setSelectedOverlay(null);
+          const linkedIndicator = indicators.instances.find(instance =>
+            isLinkedRangeOverlay(instance, id),
+          );
+          if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
+        }, overlay => {
+          const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
+          const range = getOverlayTimestampRange(overlay);
+          if (anchoredIndicator && range) {
+            indicators.addIndicator(anchoredIndicator, {
+              startTimestamp: range[0],
+              endTimestamp: range[1],
+              overlayId: overlay.id,
+            });
+          }
         });
       } else if ((isMod && e.key.toLowerCase() === 'y') || (isMod && e.shiftKey && e.key.toLowerCase() === 'z')) {
         e.preventDefault();
         redo(chart, overlay => {
           setSelectedOverlay(overlay);
+          const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
+          const range = getOverlayTimestampRange(overlay);
+          if (anchoredIndicator && range) {
+            indicators.addIndicator(anchoredIndicator, {
+              startTimestamp: range[0],
+              endTimestamp: range[1],
+              overlayId: overlay.id,
+            });
+          }
+        }, overlayId => {
+          const linkedIndicator = indicators.instances.find(instance =>
+            isLinkedRangeOverlay(instance, overlayId),
+          );
+          if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
         });
       } else if ((e.key === 'Delete') && chart) {
         const idToDelete = selectedForDeleteRef.current;
@@ -198,7 +313,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
           const overlay = chart.getOverlayById(idToDelete);
           if (overlay) {
             recordRemove(overlay);
-            chart.removeOverlay({ id: idToDelete });
+            removeOverlayAndLinkedIndicator(overlay);
             selectedForDeleteRef.current = null;
             setSelectedOverlay(prev => (prev?.id === idToDelete ? null : prev));
           }
@@ -207,7 +322,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [chartRef, selectedOverlay, undo, redo, recordRemove, selectedForDeleteRef]);
+  }, [chartRef, selectedOverlay, undo, redo, recordRemove, selectedForDeleteRef, indicators, handleToolClick, removeOverlayAndLinkedIndicator]);
 
 
   return (
@@ -242,6 +357,12 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
             onRefreshData={handleRefreshData}
           />
 
+          {pendingRangeIndicator && (
+            <div className="pointer-events-none absolute left-4 top-4 z-40 rounded-md border border-primary-500/40 bg-dark-800/95 px-3 py-2 text-xs text-slate-200 shadow-lg">
+              Draw a two-point range to anchor {pendingRangeIndicator === 'AVWAP' ? 'VWAP' : 'Volume Profile'}.
+            </div>
+          )}
+
           {/* Top-left indicator legend */}
           <IndicatorLegend
             instances={indicators.instances}
@@ -253,7 +374,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
           {/* Add indicator dropdown */}
           {indicators.showAddMenu && (
             <IndicatorMenu
-              onAdd={indicators.addIndicator}
+              onAdd={handleAddIndicator}
               onClose={() => indicators.setShowAddMenu(false)}
             />
           )}

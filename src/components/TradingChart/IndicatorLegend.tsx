@@ -8,6 +8,14 @@ interface IndicatorLegendProps {
   onToggleVisibility: (id: string) => void;
 }
 
+function formatIndicatorParams(instance: IndicatorInstance): string {
+  if (instance.name === 'AVWAP') return 'range selected';
+  if (instance.name === 'AVP' && instance.calcParams.length >= 5) {
+    return instance.calcParams.slice(2).join(', ');
+  }
+  return instance.calcParams.join(', ');
+}
+
 /**
  * TradingView-style top-left legend showing all active indicator instances.
  * Each pill displays the indicator name, params summary, and color dot.
@@ -45,7 +53,7 @@ export function IndicatorLegend({
           >
             <span className="font-medium">{inst.name}</span>
             <span className="text-slate-500">
-              ({inst.calcParams.join(', ')})
+              ({formatIndicatorParams(inst)})
             </span>
           </button>
 

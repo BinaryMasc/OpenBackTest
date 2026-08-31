@@ -46,7 +46,9 @@ credentials**. The browser connects to `ws://127.0.0.1:8765` by default. Set
 - Live RAPI+ trade prints update the current one-minute candle.
 - The gateway exposes account discovery, PnL/position snapshots and streams,
   market- and limit-order submission, order cancellation, cancel-all, and position
-  flattening to Live mode. Before sending an order it resolves the enabled
+  flattening to Live mode. Flattening without a symbol cancels all working orders
+  and exits every open position in the selected account; a symbol can be supplied
+  for a scoped exit. Before sending an order it resolves the enabled
   Rithmic trade route and waits briefly for the broker's line update, so
   working, filled, cancelled, and rejected states stay correlated with the
   browser order. Set `RITHMIC_TRADE_ROUTE` to override route discovery.

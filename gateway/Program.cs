@@ -1440,17 +1440,40 @@ sealed class RapiSession
         await ResolveAccountsAsync();
         if (activeAccountId is null || !accountHandles.TryGetValue(activeAccountId, out var rawAccount))
             throw new InvalidOperationException("Select a trading account before flattening a position.");
-        if (string.IsNullOrWhiteSpace(symbol)) throw new InvalidOperationException("A symbol is required to flatten.");
-        var parsed = ParseSymbol(symbol);
+
+        // A broker flatten is an account safety operation: discover the live
+        // position set when no symbol was supplied, then exit every position
+        // after cancelling every working order. This prevents an order from
+        // reopening a position while the exits are being processed.
+        if (string.IsNullOrWhiteSpace(symbol))
+            await LoadAccountStateAsync(activeAccountId);
+
+        var positionsToExit = new List<(string Symbol, string Exchange)>();
+        if (!string.IsNullOrWhiteSpace(symbol))
+        {
+            positionsToExit.Add(ParseSymbol(symbol));
+        }
+        else if (accountStates.TryGetValue(activeAccountId, out var currentState))
+        {
+            foreach (var position in currentState.Positions.Where(item => item.Quantity > 0))
+            {
+                var parsedPosition = ParseSymbol(position.Symbol);
+                if (!positionsToExit.Any(item =>
+                        item.Symbol.Equals(parsedPosition.Symbol, StringComparison.OrdinalIgnoreCase)
+                        && item.Exchange.Equals(parsedPosition.Exchange, StringComparison.OrdinalIgnoreCase)))
+                {
+                    positionsToExit.Add(parsedPosition);
+                }
+            }
+        }
+
         // Cancel first so a working opening order cannot re-enter the position
         // while the broker is processing the flatten request.
         Invoke(engine!, "cancelAllOrders", rawAccount, "M", "OpenBackTest", "OpenBackTest");
         if (accountStates.TryGetValue(activeAccountId, out var state))
         {
-            var qualifiedSymbol = Qualify(parsed.Symbol, parsed.Exchange);
             foreach (var order in state.Orders.Where(item =>
-                         item.Symbol.Equals(qualifiedSymbol, StringComparison.OrdinalIgnoreCase)
-                         && item.Status is "pending" or "working" or "partially-filled"))
+                         item.Status is "pending" or "working" or "partially-filled"))
             {
                 order.Status = "cancelled";
                 provisionalOrderIds.Remove(order.OrderId);
@@ -1461,7 +1484,10 @@ sealed class RapiSession
                 _ = SendAsync(new { type = "accountState", state });
         }
         await Task.Delay(250, lifetime.Token);
-        Invoke(engine!, "exitPosition", rawAccount, parsed.Exchange, parsed.Symbol, "M", "OpenBackTest", "OpenBackTest", "", "OpenBackTest", new object());
+        foreach (var position in positionsToExit)
+        {
+            Invoke(engine!, "exitPosition", rawAccount, position.Exchange, position.Symbol, "M", "OpenBackTest", "OpenBackTest", "", "OpenBackTest", new object());
+        }
     }
 
     private void ProcessTrade(object info)

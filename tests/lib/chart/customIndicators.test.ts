@@ -24,6 +24,12 @@ function vpvr() {
   return call[0] as unknown as Indicator;
 }
 
+function registeredByName(name: string) {
+  const call = registered.mock.calls.find(([indicator]) => indicator.name === name);
+  if (!call) throw new Error(`${name} was not registered`);
+  return call[0] as unknown as Indicator;
+}
+
 describe('VPVR custom indicator', () => {
   beforeEach(() => {
     registered.mockReset();
@@ -94,5 +100,40 @@ describe('VPVR custom indicator', () => {
     expect(ctx.lineWidth).toBe(2);
     expect(ctx.setLineDash).toHaveBeenCalledWith([]);
     expect(ctx.stroke).toHaveBeenCalledOnce();
+  });
+});
+
+describe('additional custom indicators', () => {
+  beforeEach(() => {
+    registered.mockReset();
+    registerCustomIndicators();
+  });
+
+  it('registers anchored VWAP, anchored volume profile, and ATR independently', () => {
+    expect(registered.mock.calls.map(([indicator]) => indicator.name)).toEqual(['VPVR', 'AVWAP', 'AVP', 'ATR']);
+    expect(registeredByName('AVWAP').calcParams).toEqual([]);
+    expect(registeredByName('AVP').calcParams).toEqual([120, 30, 70]);
+    expect(registeredByName('ATR').calcParams).toEqual([14]);
+  });
+
+  it('calculates anchored VWAP from the selected anchor and Wilder ATR', () => {
+    const candles = [
+      { timestamp: 1, open: 9, high: 10, low: 8, close: 9, volume: 2 },
+      { timestamp: 2, open: 10, high: 12, low: 9, close: 11, volume: 1 },
+      { timestamp: 3, open: 11, high: 13, low: 10, close: 12, volume: 1 },
+    ];
+    const avwap = registeredByName('AVWAP');
+    const atr = registeredByName('ATR');
+
+    expect(avwap.calc(candles, { calcParams: [2, 3] } as never)).toEqual([
+      { value: null },
+      { value: (9 + 11 + 12) / 3 },
+      { value: (((9 + 11 + 12) / 3) + ((10 + 12 + 13) / 3)) / 2 },
+    ]);
+    expect(atr.calc(candles, { calcParams: [2] } as never)).toEqual([
+      { value: null },
+      { value: 2.5 },
+      { value: 2.75 },
+    ]);
   });
 });

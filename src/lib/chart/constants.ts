@@ -1,4 +1,5 @@
 export const DRAWING_GROUP_ID = 'drawing_group';
+export const INDICATOR_RANGE_GROUP_ID = 'indicator_range_group';
 export const CANDLE_PANE_ID = 'candle_pane';
 
 import { CUSTOM_INDICATORS_LIST, CUSTOM_INDICATOR_PARAMS } from './customIndicators';

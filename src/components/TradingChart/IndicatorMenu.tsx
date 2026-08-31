@@ -70,6 +70,10 @@ function getIndicatorLabel(name: string): string {
     VOL: 'Volume',
     RSI: 'Relative Strength',
     BOLL: 'Bollinger Bands',
+    AVWAP: 'Anchored VWAP',
+    AVP: 'Anchored Volume Profile',
+    ATR: 'Average True Range',
+    VPVR: 'Visible Range Volume Profile',
   };
   return labels[name] ?? name;
 }

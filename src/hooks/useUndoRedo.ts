@@ -35,6 +35,11 @@ export function useUndoRedo() {
         groupId: overlay.groupId,
         points: overlay.points,
         styles: overlay.styles,
+        extendData: overlay.extendData,
+        onPressedMoveEnd: overlay.onPressedMoveEnd,
+        onSelected: overlay.onSelected,
+        onDeselected: overlay.onDeselected,
+        onDoubleClick: overlay.onDoubleClick,
       },
     });
   }, [recordAction]);
@@ -49,11 +54,20 @@ export function useUndoRedo() {
         groupId: overlay.groupId,
         points: overlay.points,
         styles: overlay.styles,
+        extendData: overlay.extendData,
+        onPressedMoveEnd: overlay.onPressedMoveEnd,
+        onSelected: overlay.onSelected,
+        onDeselected: overlay.onDeselected,
+        onDoubleClick: overlay.onDoubleClick,
       },
     });
   }, [recordAction]);
 
-  const undo = useCallback((chart: Chart | null, onOverlayDeselected?: (id: string) => void) => {
+  const undo = useCallback((
+    chart: Chart | null,
+    onOverlayDeselected?: (id: string) => void,
+    onOverlayRestored?: (overlay: Overlay) => void,
+  ) => {
     const action = undoStack.current.pop();
     if (!action || !chart) return;
     redoStack.current.push(action);
@@ -62,11 +76,17 @@ export function useUndoRedo() {
       onOverlayDeselected?.(action.overlayId);
     } else if (action.type === 'REMOVE') {
       chart.createOverlay(action.config);
+      const overlay = chart.getOverlayById?.(action.overlayId);
+      if (overlay) onOverlayRestored?.(overlay);
     }
     updateFlags();
   }, [updateFlags]);
 
-  const redo = useCallback((chart: Chart | null, onOverlaySelected?: (overlay: Overlay) => void) => {
+  const redo = useCallback((
+    chart: Chart | null,
+    onOverlaySelected?: (overlay: Overlay) => void,
+    onOverlayRemoved?: (id: string) => void,
+  ) => {
     const action = redoStack.current.pop();
     if (!action || !chart) return;
     undoStack.current.push(action);
@@ -76,6 +96,7 @@ export function useUndoRedo() {
       if (overlay) onOverlaySelected?.(overlay);
     } else if (action.type === 'REMOVE') {
       chart.removeOverlay({ id: action.overlayId });
+      onOverlayRemoved?.(action.overlayId);
     }
     updateFlags();
   }, [updateFlags]);

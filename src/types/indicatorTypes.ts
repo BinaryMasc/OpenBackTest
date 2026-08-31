@@ -14,4 +14,9 @@ export interface IndicatorInstance {
   visible: boolean;
   /** Chart pane where the indicator is rendered */
   paneId: string;
+  /** Stable overlay used to select the range for anchored indicators */
+  rangeOverlayId?: string;
+  /** Time range selected by the anchored indicator overlay, in chart timestamps */
+  anchorStartTimestamp?: number;
+  anchorEndTimestamp?: number;
 }

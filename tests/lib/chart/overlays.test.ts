@@ -19,7 +19,7 @@ type OverlayParams = {
     points?: Point[];
     styles?: Record<string, unknown>;
   };
-  bounding?: { width: number };
+  bounding?: { width: number; height?: number; top?: number; bottom?: number };
   precision?: { price: number };
 };
 type OverlayConfig = {
@@ -45,6 +45,7 @@ describe('custom overlay renderers', () => {
 
   it('registers every custom overlay with the expected drawing step', () => {
     expect(registered.mock.calls.map(([config]) => config.name)).toEqual([
+      'anchoredVWAPRange', 'anchoredVolumeProfileRange',
       'rect', 'pencil', 'fibonacciLine', 'circle', 'text',
       'positionLine', 'brokerLine', 'tpLine', 'slLine', 'measurement', 'trade', 'tradeArrow'
     ]);
@@ -52,6 +53,27 @@ describe('custom overlay renderers', () => {
     expect(configFor('pencil').totalStep).toBe(1);
     expect(configFor('measurement').totalStep).toBe(3);
     expect(configFor('trade').totalStep).toBe(4);
+    expect(configFor('anchoredVWAPRange').totalStep).toBe(3);
+    expect(configFor('anchoredVolumeProfileRange').totalStep).toBe(3);
+  });
+
+  it('draws anchored indicator ranges across the chart width', () => {
+    const config = configFor('anchoredVWAPRange');
+    const figures = config.createPointFigures({
+      coordinates: [point(20, 80), point(120, 140)],
+      bounding: { width: 640, top: 0, bottom: 400 },
+      overlay: { extendData: { label: 'Selected VWAP range', color: '#00ff00' } },
+    });
+
+    expect(figures).toHaveLength(4);
+    expect(figures[0]).toMatchObject({
+      type: 'polygon',
+      styles: { style: 'stroke_fill', borderColor: '#00ff00' },
+    });
+    expect(figures[0].attrs.coordinates).toEqual([
+      { x: 20, y: 0 }, { x: 120, y: 0 }, { x: 120, y: 400 }, { x: 20, y: 400 },
+    ]);
+    expect(figures[3].attrs.text).toBe('Selected VWAP range');
   });
 
   it('draws a rectangle only after two points are available', () => {

@@ -60,7 +60,7 @@ describe('LiveAccountPanel', () => {
     // expect(screen.getByText('Live Account Statistics')).toBeInTheDocument();
     expect(screen.getByText('Buy Market')).toBeInTheDocument();
     expect(screen.getByText('Sell Market')).toBeInTheDocument();
-    expect(screen.getByText('Flatten TEST')).toBeInTheDocument();
+    expect(screen.getByText('Flatten Account')).toBeInTheDocument();
   });
 
   it('keeps account information in a separate expandable section', () => {

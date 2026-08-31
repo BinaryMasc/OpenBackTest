@@ -29,11 +29,11 @@ interface ChartStateStore {
   bySymbol: Record<string, SymbolChartState>;
   indicators: Record<string, IndicatorInstance[]>;
   getStateForSymbol: (symbol: string) => SymbolChartState | undefined;
-  getIndicators: (chartId: string) => IndicatorInstance[];
+  getIndicators: (chartId: string, symbol?: string) => IndicatorInstance[];
   getView: (symbol: string, chartId: string, timeframe: Timeframe) => ChartViewState | undefined;
   getTrades: (symbol: string, mode: StoredTradeMode) => StoredTradeArrow[];
   saveCharts: (symbol: string, charts: ChartConfig[]) => void;
-  saveIndicators: (chartId: string, indicators: IndicatorInstance[]) => void;
+  saveIndicators: (chartId: string, indicators: IndicatorInstance[], symbol?: string) => void;
   saveView: (symbol: string, chartId: string, timeframe: Timeframe, view: ChartViewState) => void;
   saveTrades: (symbol: string, mode: StoredTradeMode, trades: StoredTradeArrow[]) => void;
   clearTrades: (symbol: string, mode: StoredTradeMode) => void;
@@ -76,6 +76,10 @@ function viewKey(chartId: string, timeframe: Timeframe): string {
   return `${chartId}:${timeframe}`;
 }
 
+function indicatorKey(chartId: string, symbol?: string): string {
+  return symbol?.trim() ? `${getSymbolKey(symbol)}:${chartId}` : chartId;
+}
+
 export const useChartStateStore = create<ChartStateStore>()(
   persist(
     (set, get) => ({
@@ -84,7 +88,12 @@ export const useChartStateStore = create<ChartStateStore>()(
 
       getStateForSymbol: (symbol: string) => get().bySymbol[getSymbolKey(symbol)],
 
-      getIndicators: (chartId: string) => get().indicators[chartId] ?? [],
+      getIndicators: (chartId: string, symbol?: string) => {
+        const scoped = get().indicators[indicatorKey(chartId, symbol)];
+        // Read the old chart-only key so existing saved sessions migrate to a
+        // symbol-scoped key the next time the indicator state is saved.
+        return scoped ?? get().indicators[chartId] ?? [];
+      },
 
       getView: (symbol: string, chartId: string, timeframe: Timeframe) =>
         get().bySymbol[getSymbolKey(symbol)]?.views?.[viewKey(chartId, timeframe)],
@@ -106,11 +115,12 @@ export const useChartStateStore = create<ChartStateStore>()(
         }));
       },
 
-      saveIndicators: (chartId: string, indicators: IndicatorInstance[]) => {
+      saveIndicators: (chartId: string, indicators: IndicatorInstance[], symbol?: string) => {
+        const key = indicatorKey(chartId, symbol);
         set(state => ({
           indicators: {
             ...state.indicators,
-            [chartId]: indicators.map(indicator => ({
+            [key]: indicators.map(indicator => ({
               ...indicator,
               calcParams: [...indicator.calcParams]
             }))

@@ -41,6 +41,7 @@ export function IndicatorProperties({
 
   /** Labels for param slots based on indicator type */
   const paramLabels = getParamLabels(instance.name);
+  const editableParamIndexes = getEditableParamIndexes(instance.name, instance.calcParams.length);
 
   return (
     <div
@@ -91,39 +92,48 @@ export function IndicatorProperties({
           />
         </div>
 
+        {(instance.name === 'AVWAP' || instance.name === 'AVP') && (
+          <p className="text-[11px] leading-4 text-slate-500">
+            The highlighted range on the chart is the anchor. Drag its endpoints to change the selected range.
+          </p>
+        )}
+
         {/* Parameters */}
-        {instance.calcParams.length > 0 && (
+        {editableParamIndexes.length > 0 && (
           <div className="flex flex-col gap-2">
             <label className="text-xs text-slate-400">Parameters</label>
             <div className="flex flex-col gap-1.5">
-              {instance.calcParams.map((param, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 min-w-[60px]">
-                    {paramLabels[idx] ?? `Param ${idx + 1}`}
-                  </span>
-                  <input
-                    type="number"
-                    value={param}
-                    min={1}
-                    onChange={e => {
-                      const newParams = [...instance.calcParams];
-                      newParams[idx] = Number(e.target.value);
-                      onUpdate(instance.id, { calcParams: newParams });
-                    }}
-                    className="flex-1 bg-dark-700 border border-dark-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-primary-500 transition-colors"
-                  />
-                </div>
-              ))}
+              {editableParamIndexes.map(idx => {
+                const param = instance.calcParams[idx];
+                return (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 min-w-[60px]">
+                      {paramLabels[idx] ?? `Param ${idx + 1}`}
+                    </span>
+                    <input
+                      type="number"
+                      value={param}
+                      min={1}
+                      onChange={e => {
+                        const newParams = [...instance.calcParams];
+                        newParams[idx] = Number(e.target.value);
+                        onUpdate(instance.id, { calcParams: newParams });
+                      }}
+                      className="flex-1 bg-dark-700 border border-dark-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-primary-500 transition-colors"
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* Reset params */}
-        {DEFAULT_INDICATOR_PARAMS[instance.name] && (
+        {DEFAULT_INDICATOR_PARAMS[instance.name]?.length > 0 && (
           <button
             onClick={() =>
               onUpdate(instance.id, {
-                calcParams: [...DEFAULT_INDICATOR_PARAMS[instance.name]],
+                calcParams: getResetParams(instance),
               })
             }
             className="text-xs text-slate-500 hover:text-slate-300 transition-colors text-left"
@@ -153,6 +163,24 @@ function getParamLabels(name: string): string[] {
     MACD: ['Fast', 'Slow', 'Signal'],
     RSI: ['Period'],
     BOLL: ['Period'],
+    AVWAP: [],
+    AVP: ['', '', 'Rows', 'Width %', 'Value area %'],
+    ATR: ['Period'],
+    VPVR: ['Rows', 'Width %', 'Value area %'],
   };
   return map[name] ?? [];
+}
+
+function getEditableParamIndexes(name: string, parameterCount: number): number[] {
+  if (name === 'AVWAP') return [];
+  if (name === 'AVP' && parameterCount >= 5) return [2, 3, 4];
+  return Array.from({ length: parameterCount }, (_, index) => index);
+}
+
+function getResetParams(instance: IndicatorInstance): number[] {
+  const defaults = DEFAULT_INDICATOR_PARAMS[instance.name] ?? [];
+  if (instance.name === 'AVP' && instance.calcParams.length >= 5) {
+    return [instance.calcParams[0], instance.calcParams[1], ...defaults];
+  }
+  return [...defaults];
 }

@@ -59,8 +59,9 @@ Zustand stores defining the global state and actions.
 
 ### `src/lib/chart`
 Low-level extensions for KlineCharts.
-- **`customIndicators.ts`**: Definitions for complex indicators like Volume Profile (VPVR).
-- **`overlays.ts`**: Registration of custom visual elements (e.g., TP/SL lines).
+- **`customIndicators.ts`**: Registry for custom indicators and their default parameters.
+- **`indicators/`**: One implementation file per custom indicator (ATR, anchored VWAP, anchored Volume Profile, and VPVR).
+- **`overlays.ts`**: Registration of custom visual elements (e.g., TP/SL lines and anchored indicator range selectors).
 - **`constants.ts`**: Shared IDs and configuration constants for the chart.
 
 ### `src/types`
@@ -84,7 +85,8 @@ Low-level extensions for KlineCharts.
 | `src/store/useChartStyleStore.ts` | Central store managing persistent chart styles and styling properties. |
 | `src/components/TradingChart/CandleStyleEditor.tsx` | Floating overlay editor for bullish/bearish candle, border, and wick colors. |
 | `src/components/StatsModal.tsx` | Calculates and displays Win Rate, Profit Factor, R/R, and Equity Curve; handles CSV exports. |
-| `src/lib/chart/customIndicators.ts` | Mathematical logic for indicators not natively supported by KlineCharts. |
+| `src/lib/chart/customIndicators.ts` | Registry and defaults for indicators not natively supported by KlineCharts. |
+| `src/lib/chart/indicators/*.ts` | One file per custom indicator implementation; anchored VWAP and anchored Volume Profile receive their selected time range from chart overlays. |
 | `src/components/TradingChart/ContextMenu.tsx` | UI for the right-click menu (Set TP/SL, Reset View). |
 | `src/components/TradingChart/DrawingToolbar.tsx` | Left-side sidebar for chart annotation tools (Lines, Measures). |
 | `src/hooks/useIndicators.ts` | Bridges the store state to the KlineCharts indicator API. |
@@ -101,8 +103,12 @@ Low-level extensions for KlineCharts.
 
 ### Common Tasks
 - **Adding a New Indicator**:
-  1. Define logic in `src/lib/chart/customIndicators.ts`.
-  2. Add the indicator name to `INDICATORS_LIST` in `src/hooks/useIndicators.ts`.
+  1. Define the indicator in its own file under `src/lib/chart/indicators/`.
+  2. Register it and its defaults in `src/lib/chart/customIndicators.ts`.
+  3. Add any required UI label or parameter metadata in `IndicatorMenu.tsx` and `IndicatorProperties.tsx`.
+- **Anchored VWAP / Volume Profile**:
+  - Choose the indicator from the chart's Indicators menu, then draw the two-point range overlay on the chart.
+  - Drag either endpoint to recalculate the selected range. The range and indicator settings are persisted per symbol and chart screen.
 - **Modifying Trading Logic**:
   - Edit `src/store/useTradeStore.ts` for execution logic.
   - Edit `src/hooks/useTradeOverlays.ts` to change how positions look on the chart.
@@ -190,7 +196,7 @@ OpenBackTest consumes live data through a provider-neutral connection contract.
 - **`src/store/useBinanceStore.ts`** remains as a compatibility alias while consumers migrate to `useMarketDataStore`.
 - **`src/store/useBacktestStore.ts`** remains provider-agnostic and only receives normalized candles through `updateLiveCandle(kline)`.
 
-Rithmic market data and actual-account execution are available through the local `gateway/` project. The gateway uses the Quantower-compatible RAPI+ runtime and the checked-in Chicago paper profile, while credentials and native library paths remain environment/browser configuration. The provider-neutral execution contract is separate from chart data, so future providers such as Binance can add account and order adapters without changing the simulation code.
+Rithmic market data and actual-account execution are available through the local `gateway/` project. The gateway uses the Quantower-compatible RAPI+ runtime and the checked-in Chicago paper profile, while credentials and native library paths remain environment/browser configuration. The provider-neutral execution contract is separate from chart data, so future providers such as Binance can add account and order adapters without changing the simulation code. The account-wide flatten path cancels all working orders and exits every open account position before reporting completion.
 
 The execution boundary is defined in **`src/services/execution.ts`**. It models broker accounts, orders, order updates, fills, positions, and live statistics without changing the current local simulation behavior. Rithmic is the first provider implementing it.
 

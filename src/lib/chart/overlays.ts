@@ -5,6 +5,21 @@ import { hexToRgba } from './utils';
 const OVERLAY_LABEL_BACKGROUND = '#0f172a';
 const OVERLAY_LABEL_TEXT = '#f8fafc';
 
+export const ANCHORED_VWAP_RANGE_OVERLAY = 'anchoredVWAPRange';
+export const ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY = 'anchoredVolumeProfileRange';
+
+export function getAnchoredIndicatorForRangeOverlay(name: string): 'AVWAP' | 'AVP' | null {
+  if (name === ANCHORED_VWAP_RANGE_OVERLAY) return 'AVWAP';
+  if (name === ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY) return 'AVP';
+  return null;
+}
+
+export function getRangeOverlayForAnchoredIndicator(name: string): string | null {
+  if (name === 'AVWAP') return ANCHORED_VWAP_RANGE_OVERLAY;
+  if (name === 'AVP') return ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY;
+  return null;
+}
+
 function highContrastLabelStyles(accentColor: string, size: number, padding = 4) {
   return {
     style: 'stroke_fill',
@@ -31,6 +46,51 @@ function formatTradePrice(value: number, precision: number): string {
 }
 
 export function registerCustomOverlays(): void {
+  const registerRangeOverlay = (name: string, label: string, color: string) => {
+    registerOverlay({
+      name,
+      totalStep: 3,
+      needDefaultPointFigure: true,
+      needDefaultXAxisFigure: true,
+      needDefaultYAxisFigure: false,
+      createPointFigures: ({ coordinates, bounding, overlay }: OverlayCreateFiguresCallbackParams): OverlayFigure[] => {
+        if (coordinates.length < 2) return [];
+        const left = Math.min(coordinates[0].x, coordinates[1].x);
+        const right = Math.max(coordinates[0].x, coordinates[1].x);
+        const top = bounding.top ?? 0;
+        const bottom = bounding.bottom ?? bounding.height ?? top;
+        const data = overlay.extendData as { color?: string; label?: string } | undefined;
+        const accent = data?.color ?? color;
+        const rangeLabel = data?.label ?? label;
+        return [
+          {
+            type: 'polygon',
+            attrs: { coordinates: [{ x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }] },
+            styles: { style: 'stroke_fill', color: hexToRgba(accent, 0.12), borderColor: accent, borderSize: 1 },
+          },
+          {
+            type: 'line',
+            attrs: { coordinates: [{ x: left, y: top }, { x: left, y: bottom }] },
+            styles: { color: accent, style: 'dashed', dashedValue: [4, 4], size: 1 },
+          },
+          {
+            type: 'line',
+            attrs: { coordinates: [{ x: right, y: top }, { x: right, y: bottom }] },
+            styles: { color: accent, style: 'dashed', dashedValue: [4, 4], size: 1 },
+          },
+          {
+            type: 'text',
+            attrs: { x: left + 5, y: top + 5, text: rangeLabel, align: 'left', baseline: 'top' },
+            styles: highContrastLabelStyles(accent, 11, 3),
+          },
+        ];
+      },
+    });
+  };
+
+  registerRangeOverlay(ANCHORED_VWAP_RANGE_OVERLAY, 'Anchored VWAP range', '#2196F3');
+  registerRangeOverlay(ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY, 'Anchored Volume Profile range', '#FF9800');
+
   registerOverlay({
     name: 'rect',
     needDefaultPointFigure: true,

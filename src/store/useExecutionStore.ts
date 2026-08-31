@@ -260,7 +260,14 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
           const state = await connection.getAccountState(accountId);
           if (get().connection !== connection || get().selectedAccountId !== accountId) return;
           set({ accountState: state });
-          if (!symbol) break;
+          if (!symbol) {
+            const hasPosition = state.positions.some(position => position.quantity > 0);
+            const hasWorkingOrder = state.orders.some(order =>
+              order.status === 'pending' || order.status === 'working' || order.status === 'partially-filled'
+            );
+            if (!hasPosition && !hasWorkingOrder) break;
+            continue;
+          }
           const normalizedSymbol = symbol.toUpperCase();
           const sameSymbol = (value: string) => {
             const normalized = value.toUpperCase();

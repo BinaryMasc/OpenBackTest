@@ -93,14 +93,13 @@ export function ActualAccountPanel() {
   };
 
   const handleFlatten = async () => {
-    if (!currentSymbol) return;
     const flattenPosition = async () => {
-      await flatten(currentSymbol);
+      await flatten();
     };
     if (askForConfirmations) {
       requestConfirmation({
-        description: `Flatten ${currentSymbol}? This sends a live broker order.`,
-        confirmLabel: 'Flatten position',
+        description: 'Flatten all live positions and cancel all working orders? This sends live broker orders.',
+        confirmLabel: 'Flatten account',
         submit: flattenPosition
       });
     } else {
@@ -130,6 +129,7 @@ export function ActualAccountPanel() {
     && !isSubmitting
     && (orderType === 'market' || (Number.isFinite(Number(limitPrice)) && Number(limitPrice) > 0))
   );
+  const canFlatten = Boolean(snapshot && selectedAccountId && !isSubmitting);
 
   return (
     <div className="space-y-4 border-t border-dark-700/50 pt-4">
@@ -359,11 +359,11 @@ export function ActualAccountPanel() {
               <button
                 type="button"
                 onClick={() => void handleFlatten()}
-                disabled={!canTrade}
+                disabled={!canFlatten}
                 className="col-span-2 flex items-center justify-center gap-2 rounded-lg bg-slate-700 py-2.5 text-xs font-bold text-white transition-all hover:bg-slate-600 disabled:opacity-50"
               >
                 <CircleOff size={14} />
-                Flatten {currentSymbol || 'Position'}
+                Flatten Account
               </button>
             </div>
           </div>
