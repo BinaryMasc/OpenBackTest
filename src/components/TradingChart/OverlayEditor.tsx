@@ -35,6 +35,7 @@ export function OverlayEditor({
   const panelRef = useRef<HTMLDivElement>(null);
   const [textValue, setTextValue] = useState((overlay.extendData as string) ?? 'Text');
   const isTradePosition = overlay.name === 'trade';
+  const isAnchoredRange = overlay.name === 'anchoredVWAPRange' || overlay.name === 'anchoredVolumeProfileRange';
   const tradeData = (overlay.extendData && typeof overlay.extendData === 'object')
     ? overlay.extendData as { rewardColor?: string; riskColor?: string }
     : {};
@@ -80,10 +81,17 @@ export function OverlayEditor({
     if (overlay.name === 'text') {
       styles.text = { color, size: fontSize };
     }
+    const anchoredData = overlay.extendData && typeof overlay.extendData === 'object'
+      ? overlay.extendData as Record<string, unknown>
+      : {};
     chart.overrideOverlay({
       id: overlay.id,
       styles,
-      extendData: isTradePosition ? { ...tradeData, rewardColor, riskColor } : textValue,
+      extendData: isTradePosition
+        ? { ...tradeData, rewardColor, riskColor }
+        : isAnchoredRange
+          ? { ...anchoredData, color }
+          : textValue,
     });
   };
 

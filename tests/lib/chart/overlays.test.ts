@@ -65,7 +65,7 @@ describe('custom overlay renderers', () => {
       overlay: { extendData: { label: 'Selected VWAP range', color: '#00ff00' } },
     });
 
-    expect(figures).toHaveLength(3);
+    expect(figures).toHaveLength(5);
     expect(figures[0]).toMatchObject({
       type: 'polygon',
       styles: { style: 'stroke_fill', borderColor: '#00ff00' },

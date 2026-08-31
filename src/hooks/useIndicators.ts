@@ -33,6 +33,7 @@ interface UseIndicatorsOptions {
   chartReady: boolean;
   symbol: string;
   dataReady?: boolean;
+  onAnchoredOverlaySelected?: (overlay: Overlay) => void;
 }
 
 function removeIndicatorInstances(chart: Chart, instances: IndicatorInstance[]): void {
@@ -84,6 +85,7 @@ function restoreRangeOverlay(
   chart: Chart,
   instance: IndicatorInstance,
   onRangeChanged: (overlayId: string, startTimestamp: number, endTimestamp: number) => void,
+  onSelected?: (overlay: Overlay) => void,
 ): void {
   const overlayName = getRangeOverlayForAnchoredIndicator(instance.name);
   const range = getAnchorTimestamps(instance);
@@ -115,12 +117,16 @@ function restoreRangeOverlay(
         borderSize: 1,
       },
     },
+    onSelected: (event: { overlay: Overlay }) => {
+      onSelected?.(event.overlay);
+      return true;
+    },
     onPressedMoveEnd: (event: { overlay: Overlay }) => {
       const range = getOverlayTimestampRange(event.overlay);
       if (range) onRangeChanged(event.overlay.id, range[0], range[1]);
       return true;
     },
-  });
+  }, 'candle_pane');
 }
 
 export function useIndicators(
@@ -130,6 +136,7 @@ export function useIndicators(
     chartReady = true,
     symbol = '',
     dataReady = true,
+    onAnchoredOverlaySelected,
   }: Partial<UseIndicatorsOptions> = {}
 ) {
   const [instances, setInstances] = useState<IndicatorInstance[]>([]);
@@ -271,11 +278,13 @@ export function useIndicators(
         },
         'candle_pane',
       );
-      if (RANGE_INDICATORS.has(instance.name)) restoreRangeOverlay(chart, instance, updateAnchoredRange);
+       if (RANGE_INDICATORS.has(instance.name)) {
+         restoreRangeOverlay(chart, instance, updateAnchoredRange, onAnchoredOverlaySelected);
+       }
     });
 
     MERGEABLE_OVERLAYS.forEach(name => syncOverlay(chart, name, restoredInstances));
-  }, [syncOverlay, updateAnchoredRange]);
+  }, [onAnchoredOverlaySelected, syncOverlay, updateAnchoredRange]);
 
   useEffect(() => {
     instancesRef.current = instances;
@@ -322,7 +331,7 @@ export function useIndicators(
       const calcParams = isAnchored && range
         ? name === 'AVWAP'
           ? [range.startTimestamp, range.endTimestamp]
-          : [range.startTimestamp, range.endTimestamp, ...(DEFAULT_INDICATOR_PARAMS[name] || [120, 30, 70])]
+          : [range.startTimestamp, range.endTimestamp, ...(DEFAULT_INDICATOR_PARAMS[name] || [120, 15, 70])]
         : isMergeable
         ? [DEFAULT_INDICATOR_PARAMS[name]?.[0] ?? 14]
         : [...(DEFAULT_INDICATOR_PARAMS[name] || [])];

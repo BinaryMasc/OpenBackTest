@@ -137,11 +137,16 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
 
   const { undo, redo, recordAdd, recordRemove, canUndo, canRedo } = useUndoRedo();
 
+  const handleOverlaySelected = useCallback((overlay: Overlay | null) => {
+    setSelectedOverlay(overlay);
+  }, []);
+
   const indicators = useIndicators(chartRef, {
     chartId: id,
     chartReady,
     symbol,
     dataReady: aggregatedData.length > 0,
+    onAnchoredOverlaySelected: handleOverlaySelected,
   });
   useTradeOverlays(chartRef, chartReady);
   const [pendingRangeIndicator, setPendingRangeIndicator] = useState<'AVWAP' | 'AVP' | null>(null);
@@ -168,10 +173,6 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     }
   }, [indicators]);
 
-  const handleOverlaySelected = useCallback((overlay: Overlay | null) => {
-    setSelectedOverlay(overlay);
-  }, []);
-
   const { activeTool, handleToolClick, selectedForDeleteRef } = useDrawingTools({
     chartRef,
     containerRef,
@@ -187,15 +188,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     indicators.setEditingInstanceId(id);
     const instance = indicators.instances.find(item => item.id === id);
     if (!instance || (instance.name !== 'AVWAP' && instance.name !== 'AVP')) return;
-
-    const overlayId = instance.rangeOverlayId ?? `${instance.id}_range`;
-    const overlay = chartRef.current?.getOverlayById(overlayId);
-    if (overlay) {
-      // The range overlay is the draggable control for anchored indicators.
-      selectedForDeleteRef.current = overlay.id;
-      setSelectedOverlay(overlay);
-    }
-  }, [chartRef, indicators, selectedForDeleteRef]);
+  }, [indicators]);
 
   const handleAddIndicator = useCallback((name: string) => {
     const rangeOverlay = getRangeOverlayForAnchoredIndicator(name);

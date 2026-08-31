@@ -77,6 +77,16 @@ export function registerCustomOverlays(): void {
             attrs: { coordinates: [{ x: right, y: top }, { x: right, y: bottom }] },
             styles: { color: accent, style: 'dashed', dashedValue: [4, 4], size: 1 },
           },
+          {
+            type: 'circle',
+            attrs: { x: coordinates[0].x, y: coordinates[0].y, r: 5 },
+            styles: { color: accent, style: 'stroke_fill', borderColor: accent, borderSize: 1 },
+          },
+          {
+            type: 'circle',
+            attrs: { x: coordinates[1].x, y: coordinates[1].y, r: 5 },
+            styles: { color: accent, style: 'stroke_fill', borderColor: accent, borderSize: 1 },
+          },
         ];
       },
     });
