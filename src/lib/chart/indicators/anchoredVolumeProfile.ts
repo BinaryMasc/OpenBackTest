@@ -6,7 +6,7 @@ export const ANCHORED_VOLUME_PROFILE_DEFAULT_PARAMS = [120, 30, 70] as const;
 
 type ProfileDrawParams = IndicatorDrawParams<Record<string, never>>;
 
-function drawProfile({ ctx, kLineDataList, visibleRange, bounding, yAxis, indicator }: ProfileDrawParams): boolean {
+function drawProfile({ ctx, kLineDataList, visibleRange, bounding, barSpace, xAxis, yAxis, indicator }: ProfileDrawParams): boolean {
   const hasSelectedRange = indicator.calcParams.length >= 5;
   const rangeParams = hasSelectedRange ? indicator.calcParams.slice(0, 2) : indicator.calcParams.slice(0, 1);
   const visualParams = hasSelectedRange ? indicator.calcParams.slice(2) : indicator.calcParams.slice(1);
@@ -76,7 +76,14 @@ function drawProfile({ ctx, kLineDataList, visibleRange, bounding, yAxis, indica
     }
   }
 
-  const maxWidth = bounding.width * (widthPercent / 100);
+  const configuredWidth = bounding.width * (widthPercent / 100);
+  const startX = hasSelectedRange
+    ? xAxis.convertToPixel(start)
+    : bounding.width - configuredWidth;
+  const selectedRangeWidth = hasSelectedRange
+    ? Math.max(barSpace.bar, Math.abs(xAxis.convertToPixel(selectedEnd) - startX) + barSpace.bar)
+    : configuredWidth;
+  const maxWidth = Math.min(configuredWidth, selectedRangeWidth);
   const lineColor = indicator.styles?.lines?.[0]?.color || 'rgba(33, 150, 243, 0.65)';
   for (let row = 0; row < rowCount; row += 1) {
     if (rows[row] <= 0) continue;
@@ -84,14 +91,14 @@ function drawProfile({ ctx, kLineDataList, visibleRange, bounding, yAxis, indica
     const y1 = yAxis.convertToPixel(minPrice + row * rowHeight);
     const y2 = yAxis.convertToPixel(minPrice + (row + 1) * rowHeight);
     ctx.fillStyle = inValueArea[row] ? lineColor : 'rgba(33, 150, 243, 0.2)';
-    ctx.fillRect(bounding.width - width, Math.min(y1, y2), width, Math.max(1, Math.abs(y2 - y1) - 1));
+    ctx.fillRect(startX, Math.min(y1, y2), width, Math.max(1, Math.abs(y2 - y1) - 1));
   }
 
   const pocPrice = minPrice + (pocIndex + 0.5) * rowHeight;
   const pocY = yAxis.convertToPixel(pocPrice);
   ctx.beginPath();
-  ctx.moveTo(bounding.width - maxWidth, pocY);
-  ctx.lineTo(bounding.width, pocY);
+  ctx.moveTo(startX, pocY);
+  ctx.lineTo(startX + maxWidth, pocY);
   ctx.strokeStyle = '#ef4444';
   ctx.lineWidth = 2;
   ctx.setLineDash([]);

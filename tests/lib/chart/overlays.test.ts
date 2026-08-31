@@ -65,7 +65,7 @@ describe('custom overlay renderers', () => {
       overlay: { extendData: { label: 'Selected VWAP range', color: '#00ff00' } },
     });
 
-    expect(figures).toHaveLength(4);
+    expect(figures).toHaveLength(3);
     expect(figures[0]).toMatchObject({
       type: 'polygon',
       styles: { style: 'stroke_fill', borderColor: '#00ff00' },
@@ -73,7 +73,6 @@ describe('custom overlay renderers', () => {
     expect(figures[0].attrs.coordinates).toEqual([
       { x: 20, y: 0 }, { x: 120, y: 0 }, { x: 120, y: 400 }, { x: 20, y: 400 },
     ]);
-    expect(figures[3].attrs.text).toBe('Selected VWAP range');
   });
 
   it('draws a rectangle only after two points are available', () => {

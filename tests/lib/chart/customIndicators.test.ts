@@ -101,6 +101,43 @@ describe('VPVR custom indicator', () => {
     expect(ctx.setLineDash).toHaveBeenCalledWith([]);
     expect(ctx.stroke).toHaveBeenCalledOnce();
   });
+
+  it('draws an anchored profile from the selected range start', () => {
+    const draw = registeredByName('AVP').draw;
+    const ctx = {
+      fillRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      setLineDash: vi.fn(),
+      stroke: vi.fn(),
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 0,
+    };
+
+    draw({
+      ctx,
+      yAxis: { convertToPixel: (value: number) => value },
+      xAxis: { convertToPixel: (value: number) => 100 + value * 20 },
+      bounding: { width: 400 },
+      barSpace: { bar: 20, halfBar: 10, gapBar: 4, halfGapBar: 2 },
+      visibleRange: { from: 0, to: 10 },
+      kLineDataList: [
+        { timestamp: 1, high: 110, low: 100, volume: 10 },
+        { timestamp: 2, high: 105, low: 101, volume: 5 },
+        { timestamp: 3, high: 108, low: 102, volume: 8 },
+      ],
+      indicator: {
+        calcParams: [2, 3, 120, 30, 70],
+        styles: { lines: [{ color: '#00ff00' }] },
+      },
+    });
+
+    expect(ctx.fillRect).toHaveBeenCalled();
+    expect(ctx.fillRect.mock.calls[0][0]).toBe(120);
+    expect(ctx.moveTo.mock.calls[0][0]).toBe(120);
+  });
 });
 
 describe('additional custom indicators', () => {

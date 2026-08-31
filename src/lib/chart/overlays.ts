@@ -46,7 +46,7 @@ function formatTradePrice(value: number, precision: number): string {
 }
 
 export function registerCustomOverlays(): void {
-  const registerRangeOverlay = (name: string, label: string, color: string) => {
+  const registerRangeOverlay = (name: string, color: string) => {
     registerOverlay({
       name,
       totalStep: 3,
@@ -59,9 +59,8 @@ export function registerCustomOverlays(): void {
         const right = Math.max(coordinates[0].x, coordinates[1].x);
         const top = bounding.top ?? 0;
         const bottom = bounding.bottom ?? bounding.height ?? top;
-        const data = overlay.extendData as { color?: string; label?: string } | undefined;
+        const data = overlay.extendData as { color?: string } | undefined;
         const accent = data?.color ?? color;
-        const rangeLabel = data?.label ?? label;
         return [
           {
             type: 'polygon',
@@ -78,18 +77,13 @@ export function registerCustomOverlays(): void {
             attrs: { coordinates: [{ x: right, y: top }, { x: right, y: bottom }] },
             styles: { color: accent, style: 'dashed', dashedValue: [4, 4], size: 1 },
           },
-          {
-            type: 'text',
-            attrs: { x: left + 5, y: top + 5, text: rangeLabel, align: 'left', baseline: 'top' },
-            styles: highContrastLabelStyles(accent, 11, 3),
-          },
         ];
       },
     });
   };
 
-  registerRangeOverlay(ANCHORED_VWAP_RANGE_OVERLAY, 'Anchored VWAP range', '#2196F3');
-  registerRangeOverlay(ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY, 'Anchored Volume Profile range', '#FF9800');
+  registerRangeOverlay(ANCHORED_VWAP_RANGE_OVERLAY, '#2196F3');
+  registerRangeOverlay(ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY, '#FF9800');
 
   registerOverlay({
     name: 'rect',

@@ -183,6 +183,20 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     onOverlaySelected: handleOverlaySelected,
   });
 
+  const handleIndicatorSelect = useCallback((id: string) => {
+    indicators.setEditingInstanceId(id);
+    const instance = indicators.instances.find(item => item.id === id);
+    if (!instance || (instance.name !== 'AVWAP' && instance.name !== 'AVP')) return;
+
+    const overlayId = instance.rangeOverlayId ?? `${instance.id}_range`;
+    const overlay = chartRef.current?.getOverlayById(overlayId);
+    if (overlay) {
+      // The range overlay is the draggable control for anchored indicators.
+      selectedForDeleteRef.current = overlay.id;
+      setSelectedOverlay(overlay);
+    }
+  }, [chartRef, indicators, selectedForDeleteRef]);
+
   const handleAddIndicator = useCallback((name: string) => {
     const rangeOverlay = getRangeOverlayForAnchoredIndicator(name);
     if (rangeOverlay) {
@@ -366,7 +380,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
           {/* Top-left indicator legend */}
           <IndicatorLegend
             instances={indicators.instances}
-            onSelect={id => indicators.setEditingInstanceId(id)}
+            onSelect={handleIndicatorSelect}
             onRemove={indicators.removeIndicator}
             onToggleVisibility={indicators.toggleVisibility}
           />
