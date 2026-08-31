@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chart, Overlay, Point, OverlayCreate } from 'klinecharts';
 import { DRAWING_GROUP_ID, INDICATOR_RANGE_GROUP_ID } from '../lib/chart/constants';
 import { hexToRgba } from '../lib/chart/utils';
+import { clampAnchoredRangeToData } from '../lib/chart/overlays';
 
 interface UseDrawingToolsOptions {
   chartRef: React.RefObject<Chart | null>;
@@ -82,7 +83,10 @@ export function useDrawingTools({
         return true;
       },
       onPressedMoveEnd: (event: { overlay: Overlay }) => {
-        if (isAnchoredRange) onOverlayChanged?.(event.overlay);
+        if (isAnchoredRange) {
+          const overlay = clampAnchoredRangeToData(chart, event.overlay);
+          onOverlayChanged?.(overlay);
+        }
         return true;
       },
     };

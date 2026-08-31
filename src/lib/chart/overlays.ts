@@ -1,5 +1,5 @@
 import { registerOverlay } from 'klinecharts';
-import type { OverlayFigure, OverlayCreateFiguresCallbackParams } from 'klinecharts';
+import type { Chart, Overlay, OverlayFigure, OverlayCreateFiguresCallbackParams } from 'klinecharts';
 import { hexToRgba } from './utils';
 
 const OVERLAY_LABEL_BACKGROUND = '#0f172a';
@@ -18,6 +18,38 @@ export function getRangeOverlayForAnchoredIndicator(name: string): string | null
   if (name === 'AVWAP') return ANCHORED_VWAP_RANGE_OVERLAY;
   if (name === 'AVP') return ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY;
   return null;
+}
+
+export function clampAnchoredRangeToData(chart: Chart, overlay: Overlay): Overlay {
+  const dataList = chart.getDataList();
+  if (dataList.length === 0 || overlay.points.length < 2) return overlay;
+
+  const lastIndex = dataList.length - 1;
+  const pointIndexes = overlay.points.map(point => {
+    if (typeof point.dataIndex === 'number' && Number.isFinite(point.dataIndex)) {
+      return point.dataIndex;
+    }
+    if (typeof point.timestamp === 'number' && Number.isFinite(point.timestamp)) {
+      const index = dataList.findIndex(candle => candle.timestamp >= point.timestamp!);
+      return index >= 0 ? index : lastIndex;
+    }
+    return 0;
+  });
+  const points = overlay.points.map((point, index) => {
+    const dataIndex = Math.max(0, Math.min(lastIndex, Math.round(pointIndexes[index])));
+    return {
+      ...point,
+      dataIndex,
+      timestamp: dataList[dataIndex].timestamp,
+    };
+  });
+  const changed = points.some((point, index) =>
+    point.dataIndex !== overlay.points[index].dataIndex || point.timestamp !== overlay.points[index].timestamp,
+  );
+  if (!changed) return overlay;
+
+  chart.overrideOverlay({ id: overlay.id, points });
+  return chart.getOverlayById(overlay.id) ?? { ...overlay, points };
 }
 
 function highContrastLabelStyles(accentColor: string, size: number, padding = 4) {

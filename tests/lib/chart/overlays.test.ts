@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerOverlay } from 'klinecharts';
-import { registerCustomOverlays } from '../../../src/lib/chart/overlays';
+import { clampAnchoredRangeToData, registerCustomOverlays } from '../../../src/lib/chart/overlays';
 
 vi.mock('klinecharts', () => ({
   registerOverlay: vi.fn(),
@@ -81,6 +81,30 @@ describe('custom overlay renderers', () => {
       overlay: { extendData: { showHandles: true, color: '#00ff00' } },
     });
     expect(activeFigures[3]).toMatchObject({ type: 'circle', styles: { color: '#00ff00' } });
+  });
+
+  it('clamps only the dragged anchor beyond the last candle', () => {
+    const overlay = {
+      id: 'range-1',
+      points: [point(3, 100, 100, 3), point(8, 120, 120, 8)],
+    };
+    const updated = { ...overlay, points: [] as Point[] };
+    const chart = {
+      getDataList: () => [{ timestamp: 1 }, { timestamp: 2 }, { timestamp: 3 }, { timestamp: 4 }, { timestamp: 5 }, { timestamp: 6 }],
+      overrideOverlay: vi.fn(({ points }: { points: Point[] }) => { updated.points = points; }),
+      getOverlayById: vi.fn(() => updated),
+    };
+
+    const result = clampAnchoredRangeToData(chart as never, overlay as never);
+
+    expect(chart.overrideOverlay).toHaveBeenCalledWith({
+      id: 'range-1',
+      points: [
+        expect.objectContaining({ dataIndex: 3, timestamp: 4 }),
+        expect.objectContaining({ dataIndex: 5, timestamp: 6 }),
+      ],
+    });
+    expect(result.points.map(point => point.dataIndex)).toEqual([3, 5]);
   });
 
   it('draws a rectangle only after two points are available', () => {

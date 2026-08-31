@@ -9,7 +9,7 @@ import {
   INDICATOR_DEFAULT_COLORS,
 } from '../lib/chart/constants';
 import { INDICATOR_RANGE_GROUP_ID } from '../lib/chart/constants';
-import { getRangeOverlayForAnchoredIndicator } from '../lib/chart/overlays';
+import { clampAnchoredRangeToData, getRangeOverlayForAnchoredIndicator } from '../lib/chart/overlays';
 import { isOscillatorIndicator } from '../lib/chart/utils';
 import { hexToRgba } from '../lib/chart/utils';
 import { useChartStateStore } from '../store/useChartStateStore';
@@ -122,7 +122,7 @@ function restoreRangeOverlay(
       return true;
     },
     onPressedMoveEnd: (event: { overlay: Overlay }) => {
-      const range = getOverlayTimestampRange(event.overlay);
+      const range = getOverlayTimestampRange(clampAnchoredRangeToData(chart, event.overlay));
       if (range) onRangeChanged(event.overlay.id, range[0], range[1]);
       return true;
     },
