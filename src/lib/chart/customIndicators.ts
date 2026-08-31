@@ -12,6 +12,22 @@ export const CUSTOM_INDICATOR_PARAMS: Record<string, number[]> = {
   VPVR: [...VPVR_DEFAULT_PARAMS],
 };
 
+const anchoredIndicatorNames = new Set<string>();
+
+export function getAnchoredIndicatorEngineName(name: string, instanceId: string): string {
+  return `${name}_${instanceId}`;
+}
+
+export function registerAnchoredIndicatorInstance(name: 'AVWAP' | 'AVP', engineName: string): void {
+  if (anchoredIndicatorNames.has(engineName)) return;
+  if (name === 'AVWAP') {
+    registerIndicator({ ...ANCHORED_VWAP_INDICATOR, name: engineName, shortName: name });
+  } else {
+    registerIndicator({ ...ANCHORED_VOLUME_PROFILE_INDICATOR, name: engineName, shortName: name });
+  }
+  anchoredIndicatorNames.add(engineName);
+}
+
 export function registerCustomIndicators(): void {
   registerIndicator(VPVR_INDICATOR);
   registerIndicator(ANCHORED_VWAP_INDICATOR);

@@ -18,6 +18,7 @@ describe('useDrawingTools', () => {
       createOverlay: vi.fn().mockReturnValue('overlay-123'),
       overrideOverlay: vi.fn(),
       getOverlayById: vi.fn().mockReturnValue({ id: 'overlay-123' }),
+      getDataList: vi.fn().mockReturnValue([]),
       setScrollEnabled: vi.fn(),
       convertFromPixel: vi.fn().mockReturnValue([{ x: 10, y: 10, dataIndex: 1, value: 500 }]),
     };
@@ -190,5 +191,13 @@ describe('useDrawingTools', () => {
     });
 
     expect(onOverlaySelected).toHaveBeenCalledWith(overlay);
+
+    act(() => {
+      createOverlayArgs.onPressedMoveEnd({ overlay: { ...overlay, extendData: { color: '#2196F3' } } });
+    });
+    expect(mockChart.overrideOverlay).toHaveBeenCalledWith({
+      id: overlay.id,
+      extendData: { color: '#2196F3', showHandles: true },
+    });
   });
 });

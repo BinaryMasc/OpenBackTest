@@ -10,6 +10,7 @@ import {
 } from '../lib/chart/constants';
 import { INDICATOR_RANGE_GROUP_ID } from '../lib/chart/constants';
 import { clampAnchoredRangeToData, getRangeOverlayForAnchoredIndicator } from '../lib/chart/overlays';
+import { getAnchoredIndicatorEngineName, registerAnchoredIndicatorInstance } from '../lib/chart/customIndicators';
 import { isOscillatorIndicator } from '../lib/chart/utils';
 import { hexToRgba } from '../lib/chart/utils';
 import { useChartStateStore } from '../store/useChartStateStore';
@@ -21,6 +22,7 @@ import { useChartStateStore } from '../store/useChartStateStore';
  */
 const MERGEABLE_OVERLAYS = new Set(['MA', 'EMA', 'SMA']);
 const RANGE_INDICATORS = new Set(['AVWAP', 'AVP']);
+let indicatorIdSequence = 0;
 
 export interface AnchoredIndicatorRange {
   startTimestamp: number;
@@ -42,15 +44,23 @@ function removeIndicatorInstances(chart: Chart, instances: IndicatorInstance[]):
     if (RANGE_INDICATORS.has(instance.name)) {
       chart.removeOverlay({ id: getRangeOverlayId(instance) });
     }
-    const key = `${instance.paneId}:${instance.name}`;
+    const key = `${instance.paneId}:${getIndicatorEngineName(instance)}`;
     if (removed.has(key)) return;
     removed.add(key);
-    chart.removeIndicator(instance.paneId, instance.name);
+    chart.removeIndicator(instance.paneId, getIndicatorEngineName(instance));
   });
 }
 
 function getRangeOverlayId(instance: IndicatorInstance): string {
   return instance.rangeOverlayId ?? `${instance.id}_range`;
+}
+
+function getIndicatorEngineName(instance: IndicatorInstance): string {
+  if (!RANGE_INDICATORS.has(instance.name)) return instance.name;
+  const name = instance.name as 'AVWAP' | 'AVP';
+  const engineName = getAnchoredIndicatorEngineName(name, instance.id);
+  registerAnchoredIndicatorInstance(name, engineName);
+  return engineName;
 }
 
 function getAnchorTimestamps(instance: IndicatorInstance): [number, number] | null {
@@ -124,6 +134,13 @@ function restoreRangeOverlay(
     onPressedMoveEnd: (event: { overlay: Overlay }) => {
       const range = getOverlayTimestampRange(clampAnchoredRangeToData(chart, event.overlay));
       if (range) onRangeChanged(event.overlay.id, range[0], range[1]);
+      const extendData = event.overlay.extendData && typeof event.overlay.extendData === 'object'
+        ? event.overlay.extendData as Record<string, unknown>
+        : {};
+      chart.overrideOverlay({
+        id: event.overlay.id,
+        extendData: { ...extendData, showHandles: true },
+      });
       return true;
     },
   }, 'candle_pane');
@@ -221,7 +238,7 @@ export function useIndicators(
         : item);
       setInstances(newInstances);
       instancesRef.current = newInstances;
-      chart.overrideIndicator({ name: instance.name, calcParams }, 'candle_pane');
+      chart.overrideIndicator({ name: getIndicatorEngineName(instance), calcParams }, 'candle_pane');
     },
     [chartRef],
   );
@@ -257,14 +274,15 @@ export function useIndicators(
     });
 
     standaloneInstances.forEach(instance => {
+      const engineName = getIndicatorEngineName(instance);
       chart.createIndicator(
-        { name: instance.name, calcParams: instance.calcParams },
+        { name: engineName, calcParams: instance.calcParams },
         true,
         { id: 'candle_pane' },
       );
       chart.overrideIndicator(
         {
-          name: instance.name,
+          name: engineName,
           visible: instance.visible,
           styles: {
             lines: [{
@@ -321,7 +339,7 @@ export function useIndicators(
       const isAnchored = RANGE_INDICATORS.has(name);
       if (isAnchored && !range) return;
 
-      const uniqueId = `${name.toLowerCase()}_${Date.now()}`;
+      const uniqueId = `${name.toLowerCase()}_${Date.now()}_${indicatorIdSequence++}`;
       const color = nextColor();
       const isOsc = isOscillatorIndicator(name);
       const isMergeable = MERGEABLE_OVERLAYS.has(name);
@@ -361,11 +379,15 @@ export function useIndicators(
       } else {
         // Non-mergeable overlays — stack on candle_pane
         paneId = 'candle_pane';
-        chart.createIndicator({ name, calcParams }, true, { id: 'candle_pane' });
+        const engineName = isAnchored
+          ? getAnchoredIndicatorEngineName(name as 'AVWAP' | 'AVP', uniqueId)
+          : name;
+        if (isAnchored) registerAnchoredIndicatorInstance(name as 'AVWAP' | 'AVP', engineName);
+        chart.createIndicator({ name: engineName, calcParams }, true, { id: 'candle_pane' });
         const rgba = hexToRgba(color, 1);
         requestAnimationFrame(() => {
           chartRef.current?.overrideIndicator(
-            { name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
+            { name: engineName, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
             'candle_pane',
           );
         });
@@ -424,8 +446,8 @@ export function useIndicators(
         // Re-sync remaining instances of same type
         syncOverlay(chart, instance.name, newInstances);
       } else {
-        // Non-mergeable overlay (BOLL)
-        chart.removeIndicator('candle_pane', instance.name);
+        // Non-mergeable overlay (BOLL, AVWAP, or AVP)
+        chart.removeIndicator('candle_pane', getIndicatorEngineName(instance));
       }
       if (RANGE_INDICATORS.has(instance.name)) {
         chart.removeOverlay({ id: getRangeOverlayId(instance) });
@@ -473,14 +495,14 @@ export function useIndicators(
         // Non-mergeable overlay
         if (changes.calcParams) {
           chart.overrideIndicator(
-            { name: updated.name, calcParams: updated.calcParams },
+            { name: getIndicatorEngineName(updated), calcParams: updated.calcParams },
             'candle_pane',
           );
         }
         if (changes.color !== undefined || changes.opacity !== undefined) {
           const rgba = hexToRgba(updated.color, updated.opacity);
           chart.overrideIndicator(
-            { name: updated.name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
+            { name: getIndicatorEngineName(updated), styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
             'candle_pane',
           );
         }
@@ -524,7 +546,7 @@ export function useIndicators(
       } else {
         // Non-mergeable overlay — toggle via visible flag
         chart.overrideIndicator(
-          { name: instance.name, visible: nowVisible },
+          { name: getIndicatorEngineName(instance), visible: nowVisible },
           'candle_pane',
         );
       }

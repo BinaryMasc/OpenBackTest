@@ -86,6 +86,10 @@ export function useDrawingTools({
         if (isAnchoredRange) {
           const overlay = clampAnchoredRangeToData(chart, event.overlay);
           onOverlayChanged?.(overlay);
+          chart.overrideOverlay({
+            id: overlay.id,
+            extendData: { ...overlay.extendData, showHandles: true },
+          });
         }
         return true;
       },
