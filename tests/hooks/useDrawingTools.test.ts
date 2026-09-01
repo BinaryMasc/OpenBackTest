@@ -199,5 +199,34 @@ describe('useDrawingTools', () => {
       id: overlay.id,
       extendData: { color: '#2196F3', showHandles: true },
     });
+
+    const drawnOverlay = {
+      id: 'overlay-123',
+      name: 'anchoredVWAPRange',
+      points: [
+        { dataIndex: 1, timestamp: 2000 },
+        { dataIndex: 8, timestamp: 9000 },
+      ],
+    };
+    mockChart.getDataList.mockReturnValue([
+      { timestamp: 1000 },
+      { timestamp: 2000 },
+      { timestamp: 3000 },
+    ]);
+    mockChart.getOverlayById.mockImplementation(() => drawnOverlay);
+    mockChart.overrideOverlay.mockImplementation(({ points }: { points?: typeof drawnOverlay.points }) => {
+      if (points) drawnOverlay.points = points;
+    });
+
+    act(() => {
+      createOverlayArgs.onDrawEnd({ overlay: drawnOverlay });
+    });
+
+    expect(onOverlayCreated).toHaveBeenCalledWith(expect.objectContaining({
+      points: [
+        expect.objectContaining({ dataIndex: 1, timestamp: 2000 }),
+        expect.objectContaining({ dataIndex: 2, timestamp: 3000 }),
+      ],
+    }));
   });
 });

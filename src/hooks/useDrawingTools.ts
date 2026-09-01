@@ -55,9 +55,12 @@ export function useDrawingTools({
         text: toolName === 'text' ? { color: overlayColor, size: overlayFontSize } : undefined,
       },
       onDrawEnd: (event: { overlay: Overlay }) => {
-        onOverlaySelected(event.overlay);
-        selectedForDeleteRef.current = event.overlay.id;
-        onOverlayCreated(event.overlay);
+        const overlay = isAnchoredRange
+          ? clampAnchoredRangeToData(chart, event.overlay)
+          : event.overlay;
+        onOverlaySelected(overlay);
+        selectedForDeleteRef.current = overlay.id;
+        onOverlayCreated(overlay);
         setActiveTool(null);
         return true;
       },
