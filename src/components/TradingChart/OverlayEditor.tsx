@@ -42,15 +42,14 @@ export function OverlayEditor({
   const [rewardColor, setRewardColor] = useState(tradeData.rewardColor ?? '#22c55e');
   const [riskColor, setRiskColor] = useState(tradeData.riskColor ?? '#ef4444');
 
-  // Sync local state when overlay changes
-  useEffect(() => {
+  // Reset local state when a different overlay (or new overlay data) is shown.
+  const [syncedOverlay, setSyncedOverlay] = useState(overlay);
+  if (overlay.id !== syncedOverlay.id || overlay.extendData !== syncedOverlay.extendData) {
+    setSyncedOverlay(overlay);
     setTextValue((overlay.extendData as string) ?? 'Text');
-    const data = overlay.extendData && typeof overlay.extendData === 'object'
-      ? overlay.extendData as { rewardColor?: string; riskColor?: string }
-      : {};
-    setRewardColor(data.rewardColor ?? '#22c55e');
-    setRiskColor(data.riskColor ?? '#ef4444');
-  }, [overlay.id, overlay.extendData]);
+    setRewardColor(tradeData.rewardColor ?? '#22c55e');
+    setRiskColor(tradeData.riskColor ?? '#ef4444');
+  }
 
   // Close on click outside
   useEffect(() => {

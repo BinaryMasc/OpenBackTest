@@ -34,7 +34,8 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
   const { upColor, downColor, upBorderColor, downBorderColor, upWickColor, downWickColor } = useChartStyleStore();
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
     registerCustomOverlays();
     registerCustomIndicators();
     const chart = init(containerId);
@@ -43,6 +44,9 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
 
     if (chart) {
       chartRef.current = chart;
+      // The chart needs the mounted DOM node, so it can only be created in an
+      // effect; flag readiness so dependent hooks can attach to it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsReady(true);
       chart.setStyles('dark');
       
@@ -79,7 +83,6 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
         },
       });
 
-      const container = containerRef.current;
       handleDblClick = (e: MouseEvent) => {
         if (!chartRef.current) return;
         const rect = container.getBoundingClientRect();
@@ -130,9 +133,7 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
       chart.subscribeAction(ActionType.OnVisibleRangeChange, saveViewState);
     }
     return () => {
-      if (handleDblClick && containerRef.current) {
-        containerRef.current.removeEventListener('dblclick', handleDblClick);
-      }
+      if (handleDblClick) container.removeEventListener('dblclick', handleDblClick);
       if (saveViewState && chart) {
         chart.unsubscribeAction(ActionType.OnZoom, saveViewState);
         chart.unsubscribeAction(ActionType.OnScroll, saveViewState);
@@ -142,7 +143,7 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
       chartRef.current = null;
       setIsReady(false);
     };
-  }, []);
+  }, [containerId]);
 
   useEffect(() => {
     const chart = chartRef.current;

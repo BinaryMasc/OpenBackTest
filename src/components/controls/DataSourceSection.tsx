@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Activity, ChevronDown, Loader, StepForward, Upload, Zap } from 'lucide-react';
 import { useBacktestStore } from '../../store/useBacktestStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
@@ -47,9 +47,11 @@ export function DataSourceSection({ onOpenRithmicDialog }: DataSourceSectionProp
   const isBusy = isUploading || isMarketDataLoading;
 
   // Collapse the preset list once a live source connects.
-  useEffect(() => {
+  const [wasConnected, setWasConnected] = useState(isConnected);
+  if (isConnected !== wasConnected) {
+    setWasConnected(isConnected);
     if (isConnected) setIsPresetsExpanded(false);
-  }, [isConnected]);
+  }
 
   const loadCsvText = async (text: string) => {
     setIsPresetsExpanded(false);

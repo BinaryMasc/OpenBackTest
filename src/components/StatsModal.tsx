@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, Download, TrendingUp, Target, BarChart2, Activity, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
-import { useTradeStore, type Position } from '../store/useTradeStore';
+import { useTradeStore, type Position, type Trade } from '../store/useTradeStore';
 import Papa from 'papaparse';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, addMonths, subMonths } from 'date-fns';
@@ -115,7 +115,8 @@ function StatsModalContent() {
 
   // Chart Data for Recharts
   const chartData = useMemo(() => {
-    const data = [{ time: tradeHistory.length > 0 ? tradeHistory[0].time * 1000 : Date.now(), balance: initialBalance }];
+    const startTime = tradeHistory[0]?.time ?? finishedPositions[0]?.openTime ?? 0;
+    const data = [{ time: startTime * 1000, balance: initialBalance }];
     if (tradeHistory.length > 0) {
       tradeHistory.forEach(t => {
         if (t.positionSize === 0) {
@@ -343,7 +344,7 @@ function StatsModalContent() {
                         itemStyle={{ color: '#0ea5e9', fontWeight: 'bold' }}
                         labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
                         labelFormatter={(label) => format(new Date(label as number), 'MMM dd, yyyy HH:mm:ss')}
-                        formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Balance']}
+                        formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Balance']}
                       />
                       <Area 
                         type="stepAfter" 
@@ -396,7 +397,7 @@ function MetricRow({ label, value, color }: { label: string; value: string; colo
 
 // --- Calendar Component ---
 
-function PnLCalendar({ tradeHistory }: { tradeHistory: any[] }) {
+function PnLCalendar({ tradeHistory }: { tradeHistory: Trade[] }) {
   const [currentMonth, setCurrentMonth] = useState(() => {
     if (tradeHistory.length > 0) {
       return new Date(tradeHistory[tradeHistory.length - 1].time * 1000);

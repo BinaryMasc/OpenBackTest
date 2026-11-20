@@ -44,7 +44,6 @@ describe('PlaybackBar', () => {
     });
 
     // We can spy on the store methods
-    const spyToggle = vi.spyOn(useBacktestStore.getState(), 'togglePlayback');
     const spyStepFwd = vi.spyOn(useBacktestStore.getState(), 'stepForward');
     const spyStepBack = vi.spyOn(useBacktestStore.getState(), 'stepBackward');
     const spyRewind = vi.spyOn(useBacktestStore.getState(), 'rewind');

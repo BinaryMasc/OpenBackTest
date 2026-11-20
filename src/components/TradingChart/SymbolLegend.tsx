@@ -12,6 +12,11 @@ interface SymbolLegendProps {
   chartId: string;
 }
 
+/** Unique across reloads, so new charts never reuse a persisted chart's state. */
+function createChartId(index: number): string {
+  return `chart-${Date.now()}-${index}`;
+}
+
 export function SymbolLegend({ chartId }: SymbolLegendProps) {
   const symbol = useBacktestStore(state => state.symbol) || 'NO SYMBOL';
   const charts = useBacktestStore(state => state.charts);
@@ -49,7 +54,7 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
     const currentLen = charts.length;
     if (num > currentLen) {
       for (let i = currentLen; i < num; i++) {
-        addChart({ id: `chart-${Date.now()}-${i}`, timeframe: '1m' });
+        addChart({ id: createChartId(i), timeframe: '1m' });
       }
     } else if (num < currentLen) {
       for (let i = currentLen - 1; i >= num; i--) {
