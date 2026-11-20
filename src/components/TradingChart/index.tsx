@@ -13,6 +13,7 @@ import { IndicatorProperties } from './IndicatorProperties';
 import { IndicatorLegend } from './IndicatorLegend';
 import { OverlayEditor } from './OverlayEditor';
 import { useTradeOverlays } from '../../hooks/useTradeOverlays';
+import { useDaySeparators } from '../../hooks/useDaySeparators';
 import { SymbolLegend } from './SymbolLegend';
 import { ContextMenu } from './ContextMenu';
 import { useTradeStore } from '../../store/useTradeStore';
@@ -153,6 +154,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     onAnchoredOverlaySelected: handleOverlaySelected,
   });
   useTradeOverlays(chartRef, chartReady, series.bars);
+  useDaySeparators(chartRef, chartReady);
   const [pendingRangeIndicator, setPendingRangeIndicator] = useState<AnchoredIndicatorName | null>(null);
   const { addIndicator, removeIndicator, instances: indicatorInstances } = indicators;
 

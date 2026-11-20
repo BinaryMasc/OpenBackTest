@@ -3,7 +3,8 @@ import type { Chart } from 'klinecharts';
 import { CANDLE_PANE_ID } from '../lib/chart/constants';
 import type { MenuGroup } from '../components/TradingChart/ContextMenu';
 import type { ExecutionConfirmation, ExecutionPosition, OrderRequest } from '../services/execution';
-import { Target, ShieldAlert, Maximize2 } from 'lucide-react';
+import { Target, ShieldAlert, Maximize2, Settings2 } from 'lucide-react';
+import { useChartStyleStore } from '../store/useChartStyleStore';
 import React from 'react';
 
 interface UseContextMenuProps {
@@ -160,6 +161,11 @@ export function useContextMenu({
               chartRef.current?.resize();
               chartRef.current?.setOffsetRightDistance(50);
             }
+          },
+          {
+            label: 'Chart Settings…',
+            icon: React.createElement(Settings2, { size: 16 }),
+            onClick: () => useChartStyleStore.getState().setEditorOpen(true)
           }
         ]
       }
