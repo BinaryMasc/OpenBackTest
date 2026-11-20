@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ChartConfig, Timeframe } from '../types';
 import type { IndicatorInstance } from '../types/indicatorTypes';
+import { getSymbolKey } from '../lib/symbols';
 
 export interface ChartViewState {
   barSpace: number;
@@ -39,7 +40,6 @@ interface ChartStateStore {
   clearTrades: (symbol: string, mode: StoredTradeMode) => void;
 }
 
-const DEFAULT_SYMBOL_KEY = '__default__';
 const memoryStorage = new Map<string, string>();
 
 const chartStateStorage = {
@@ -62,11 +62,6 @@ const chartStateStorage = {
     memoryStorage.delete(name);
   }
 };
-
-function getSymbolKey(symbol: string): string {
-  const normalized = symbol.trim().toUpperCase();
-  return normalized || DEFAULT_SYMBOL_KEY;
-}
 
 function createEmptySymbolState(): SymbolChartState {
   return { charts: [], views: {}, trades: { simulation: [], live: [] } };

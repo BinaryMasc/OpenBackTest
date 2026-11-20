@@ -8,9 +8,6 @@ import { CUSTOM_INDICATORS_LIST, CUSTOM_INDICATOR_PARAMS } from './customIndicat
 //export const INDICATORS_LIST = ['MA', 'EMA', 'SMA', 'MACD', 'VOL', 'RSI', 'BOLL'] as const;
 const NATIVE_INDICATORS = ['MA', 'EMA', 'MACD', 'VOL', 'RSI'] as const;
 export const INDICATORS_LIST = [...NATIVE_INDICATORS, ...CUSTOM_INDICATORS_LIST] as const;
-export type IndicatorName = typeof INDICATORS_LIST[number];
-
-export const OSCILLATOR_INDICATORS = ['VOL', 'RSI', 'MACD'] as const;
 
 export const DEFAULT_INDICATOR_PARAMS: Record<string, number[]> = {
   MA: [5, 10, 30, 60],

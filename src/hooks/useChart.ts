@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { init, dispose, type Chart, TooltipShowRule, ActionType } from 'klinecharts';
 import type { Candle, Timeframe } from '../types';
 import { registerCustomOverlays } from '../lib/chart/overlays';
+import { CANDLE_PANE_ID } from '../lib/chart/constants';
 import { registerCustomIndicators } from '../lib/chart/customIndicators';
 import { useChartStyleStore } from '../store/useChartStyleStore';
 import { useChartStateStore } from '../store/useChartStateStore';
@@ -85,7 +86,7 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
 
         const converted = chartRef.current.convertFromPixel(
           [{ x, y }],
-          { paneId: 'candle_pane' }
+          { paneId: CANDLE_PANE_ID }
         );
 
         const point = Array.isArray(converted) ? converted[0] : converted;

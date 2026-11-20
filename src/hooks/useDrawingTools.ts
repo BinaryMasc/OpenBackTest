@@ -1,8 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chart, Overlay, Point, OverlayCreate } from 'klinecharts';
-import { DRAWING_GROUP_ID, INDICATOR_RANGE_GROUP_ID } from '../lib/chart/constants';
+import { CANDLE_PANE_ID, DRAWING_GROUP_ID, INDICATOR_RANGE_GROUP_ID } from '../lib/chart/constants';
 import { hexToRgba } from '../lib/chart/utils';
-import { clampAnchoredRangeToData } from '../lib/chart/overlays';
+import {
+  clampAnchoredRangeToData,
+  commitAnchoredRangeMove,
+  getAnchoredIndicatorForRangeOverlay,
+  getAnchoredRangeLabel,
+  patchOverlayExtendData,
+} from '../lib/chart/overlays';
 
 interface UseDrawingToolsOptions {
   chartRef: React.RefObject<Chart | null>;
@@ -42,7 +48,8 @@ export function useDrawingTools({
 
     const rgba = hexToRgba(overlayColor, overlayOpacity);
     const overlayId = `overlay_${Date.now()}`;
-    const isAnchoredRange = toolName === 'anchoredVWAPRange' || toolName === 'anchoredVolumeProfileRange';
+    const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(toolName);
+    const isAnchoredRange = anchoredIndicator !== null;
     const config: OverlayCreate = {
       name: toolName,
       id: overlayId,
@@ -67,18 +74,14 @@ export function useDrawingTools({
       onSelected: (event: { overlay: Overlay }) => {
         selectedForDeleteRef.current = event.overlay.id;
         if (isAnchoredRange) onOverlaySelected(event.overlay);
-        if (event.overlay.name === 'trade') {
-          chart.overrideOverlay({ id: event.overlay.id, extendData: { ...event.overlay.extendData, selected: true } });
-        }
+        if (event.overlay.name === 'trade') patchOverlayExtendData(chart, event.overlay, { selected: true });
         return true;
       },
       onDeselected: (event: { overlay: Overlay }) => {
         if (selectedForDeleteRef.current === event.overlay.id) {
           selectedForDeleteRef.current = null;
         }
-        if (event.overlay.name === 'trade') {
-          chart.overrideOverlay({ id: event.overlay.id, extendData: { ...event.overlay.extendData, selected: false } });
-        }
+        if (event.overlay.name === 'trade') patchOverlayExtendData(chart, event.overlay, { selected: false });
         return true;
       },
       onDoubleClick: (event: { overlay: Overlay }) => {
@@ -87,12 +90,7 @@ export function useDrawingTools({
       },
       onPressedMoveEnd: (event: { overlay: Overlay }) => {
         if (isAnchoredRange) {
-          const overlay = clampAnchoredRangeToData(chart, event.overlay);
-          onOverlayChanged?.(overlay);
-          chart.overrideOverlay({
-            id: overlay.id,
-            extendData: { ...overlay.extendData, showHandles: true },
-          });
+          commitAnchoredRangeMove(chart, event.overlay, overlay => onOverlayChanged?.(overlay));
         }
         return true;
       },
@@ -101,11 +99,8 @@ export function useDrawingTools({
     if (toolName === 'trade') {
       config.extendData = { rewardColor: '#22c55e', riskColor: '#ef4444' };
     }
-    if (toolName === 'anchoredVWAPRange' || toolName === 'anchoredVolumeProfileRange') {
-      config.extendData = {
-        label: toolName === 'anchoredVWAPRange' ? 'Anchored VWAP range' : 'Anchored Volume Profile range',
-        color: overlayColor,
-      };
+    if (anchoredIndicator) {
+      config.extendData = { label: getAnchoredRangeLabel(anchoredIndicator), color: overlayColor };
     }
 
     chart.createOverlay(config);
@@ -127,7 +122,7 @@ export function useDrawingTools({
       const rect = container.getBoundingClientRect();
       const converted = chart.convertFromPixel(
         [{ x: e.clientX - rect.left, y: e.clientY - rect.top }],
-        { paneId: 'candle_pane' }
+        { paneId: CANDLE_PANE_ID }
       );
       const point = Array.isArray(converted) ? converted[0] : converted;
       if (!point) return;
@@ -154,7 +149,7 @@ export function useDrawingTools({
             return true;
           },
         },
-        'candle_pane'
+        CANDLE_PANE_ID
       ) as string;
     };
 
@@ -163,7 +158,7 @@ export function useDrawingTools({
       const rect = container.getBoundingClientRect();
       const converted = chart.convertFromPixel(
         [{ x: e.clientX - rect.left, y: e.clientY - rect.top }],
-        { paneId: 'candle_pane' }
+        { paneId: CANDLE_PANE_ID }
       );
       const point = Array.isArray(converted) ? converted[0] : converted;
       if (!point) return;

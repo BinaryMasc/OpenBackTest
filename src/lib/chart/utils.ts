@@ -14,10 +14,9 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function isOscillatorIndicator(name: string): boolean {
-  return ['VOL', 'RSI', 'MACD', 'ATR'].includes(name);
-}
+/** Indicators drawn in their own pane below the candles. */
+const OSCILLATOR_INDICATORS = new Set(['VOL', 'RSI', 'MACD', 'ATR']);
 
-export function getPaneId(name: string): string {
-  return isOscillatorIndicator(name) ? `pane_${name}` : 'candle_pane';
+export function isOscillatorIndicator(name: string): boolean {
+  return OSCILLATOR_INDICATORS.has(name);
 }

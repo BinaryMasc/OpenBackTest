@@ -7,6 +7,24 @@ interface HistoryAction {
   config: OverlayCreate;
 }
 
+const MAX_HISTORY = 50;
+
+/** Everything needed to recreate an overlay, including its event handlers. */
+function snapshotOverlay(overlay: Overlay): OverlayCreate {
+  return {
+    name: overlay.name,
+    id: overlay.id,
+    groupId: overlay.groupId,
+    points: overlay.points,
+    styles: overlay.styles,
+    extendData: overlay.extendData,
+    onPressedMoveEnd: overlay.onPressedMoveEnd,
+    onSelected: overlay.onSelected,
+    onDeselected: overlay.onDeselected,
+    onDoubleClick: overlay.onDoubleClick,
+  };
+}
+
 export function useUndoRedo() {
   const undoStack = useRef<HistoryAction[]>([]);
   const redoStack = useRef<HistoryAction[]>([]);
@@ -21,46 +39,16 @@ export function useUndoRedo() {
   const recordAction = useCallback((action: HistoryAction) => {
     undoStack.current.push(action);
     redoStack.current = [];
-    if (undoStack.current.length > 50) undoStack.current.shift();
+    if (undoStack.current.length > MAX_HISTORY) undoStack.current.shift();
     updateFlags();
   }, [updateFlags]);
 
   const recordAdd = useCallback((overlay: Overlay) => {
-    recordAction({
-      type: 'ADD',
-      overlayId: overlay.id,
-      config: {
-        name: overlay.name,
-        id: overlay.id,
-        groupId: overlay.groupId,
-        points: overlay.points,
-        styles: overlay.styles,
-        extendData: overlay.extendData,
-        onPressedMoveEnd: overlay.onPressedMoveEnd,
-        onSelected: overlay.onSelected,
-        onDeselected: overlay.onDeselected,
-        onDoubleClick: overlay.onDoubleClick,
-      },
-    });
+    recordAction({ type: 'ADD', overlayId: overlay.id, config: snapshotOverlay(overlay) });
   }, [recordAction]);
 
   const recordRemove = useCallback((overlay: Overlay) => {
-    recordAction({
-      type: 'REMOVE',
-      overlayId: overlay.id,
-      config: {
-        name: overlay.name,
-        id: overlay.id,
-        groupId: overlay.groupId,
-        points: overlay.points,
-        styles: overlay.styles,
-        extendData: overlay.extendData,
-        onPressedMoveEnd: overlay.onPressedMoveEnd,
-        onSelected: overlay.onSelected,
-        onDeselected: overlay.onDeselected,
-        onDoubleClick: overlay.onDoubleClick,
-      },
-    });
+    recordAction({ type: 'REMOVE', overlayId: overlay.id, config: snapshotOverlay(overlay) });
   }, [recordAction]);
 
   const undo = useCallback((

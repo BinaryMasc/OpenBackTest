@@ -7,6 +7,7 @@ import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useChartStyleStore } from '../store/useChartStyleStore';
 import type { ExecutionPosition, OrderUpdate } from '../services/execution';
 import type { MarketSymbol } from '../types';
+import { sameSymbol } from '../lib/symbols';
 import {
   EMPTY_STORED_TRADE_ARROWS,
   getSymbolKey,
@@ -16,13 +17,6 @@ import {
 } from '../store/useChartStateStore';
 
 const WORKING_ORDER_STATUSES = new Set(['pending', 'working', 'partially-filled']);
-
-function sameSymbol(left: string, right: string): boolean {
-  const normalizedLeft = left.trim().toUpperCase();
-  const normalizedRight = right.trim().toUpperCase();
-  return normalizedLeft === normalizedRight
-    || normalizedLeft.split('.')[0] === normalizedRight.split('.')[0];
-}
 
 function formatPrice(price: number): string {
   return price.toFixed(price >= 1000 ? 2 : 4).replace(/\.?0+$/, '');

@@ -11,6 +11,7 @@ import {
   getMarketDataSource
 } from '../services/marketDataRegistry';
 import { useBacktestStore } from './useBacktestStore';
+import { getErrorMessage as toErrorMessage } from '../lib/errors';
 
 interface MarketDataState {
   sourceId: string | null;
@@ -32,13 +33,6 @@ interface MarketDataState {
   disconnectSource: () => void;
   setSymbol: (symbol: string) => Promise<void>;
 
-  /** Compatibility aliases for existing Binance integrations. */
-  isBinanceConnected: boolean;
-  isBinanceLoading: boolean;
-  binanceSymbols: string[];
-  pollingRef: MarketDataSubscription | null;
-  connectBinance: () => Promise<void>;
-  disconnectBinance: () => void;
 }
 
 const initialState = {
@@ -55,26 +49,7 @@ const initialState = {
   connectionRef: null,
   subscriptionRef: null,
   statusSubscriptionRef: null,
-
-  // Deprecated fields retained so existing consumers can migrate gradually.
-  isBinanceConnected: false,
-  isBinanceLoading: false,
-  binanceSymbols: [],
-  pollingRef: null
 };
-
-const getBinanceCompatibilityState = (
-  sourceId: string | null,
-  isConnected: boolean,
-  isLoading: boolean,
-  symbols: MarketSymbol[],
-  subscriptionRef: MarketDataSubscription | null
-) => ({
-  isBinanceConnected: sourceId === 'binance' && isConnected,
-  isBinanceLoading: sourceId === 'binance' && isLoading,
-  binanceSymbols: sourceId === 'binance' ? symbols.map(item => item.symbol) : [],
-  pollingRef: sourceId === 'binance' ? subscriptionRef : null
-});
 
 let connectionRequestId = 0;
 let symbolRequestId = 0;
@@ -82,12 +57,11 @@ let pendingConnectionAbortController: AbortController | null = null;
 export const RITHMIC_DATA_STALE_AFTER_MS = 30_000;
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Market-data connection failed';
+  return toErrorMessage(error, 'Market-data connection failed');
 }
 
-function closeActiveConnection(state: Pick<MarketDataState, 'subscriptionRef' | 'pollingRef' | 'statusSubscriptionRef' | 'connectionRef'>) {
-  const subscription = state.pollingRef ?? state.subscriptionRef;
-  subscription?.close();
+function closeActiveConnection(state: Pick<MarketDataState, 'subscriptionRef' | 'statusSubscriptionRef' | 'connectionRef'>) {
+  state.subscriptionRef?.close();
   state.statusSubscriptionRef?.close();
   state.connectionRef?.close();
 }
@@ -153,8 +127,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
       set({
         ...initialState,
         isLoading: false,
-        error: `Unknown market-data source: ${sourceId}`,
-        ...getBinanceCompatibilityState(null, false, false, [], null)
+        error: `Unknown market-data source: ${sourceId}`
       });
       return;
     }
@@ -174,8 +147,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
       sourceId: source.id,
       sourceName: source.name,
       isLoading: true,
-      error: null,
-      ...getBinanceCompatibilityState(source.id, false, true, [], null)
+      error: null
     });
 
     try {
@@ -196,8 +168,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
         lastDataReceivedAt: null,
         isLoading: false,
         symbols,
-        connectionRef: connection,
-        ...getBinanceCompatibilityState(connection.sourceId, true, false, symbols, null)
+        connectionRef: connection
       });
 
       const statusSubscription = connection.subscribeStatus?.(status => {
@@ -215,8 +186,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
 
       set({
         ...initialState,
-        error: getErrorMessage(error),
-        ...getBinanceCompatibilityState(null, false, false, [], null)
+        error: getErrorMessage(error)
       });
     } finally {
       externalSignal?.removeEventListener('abort', abortFromExternalSignal);
@@ -236,14 +206,12 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
     stopStaleDataMonitor();
 
     set({
-      ...initialState,
-      ...getBinanceCompatibilityState(null, false, false, [], null)
+      ...initialState
     });
   },
 
   setSymbol: async (symbol: string) => {
-    // This keeps the old direct Binance action usable while all normal UI
-    // flows go through connectSource first.
+    // Selecting a symbol without a connection connects the default source.
     if (!get().isConnected || !get().connectionRef) {
       await get().connectDefaultSource();
       if (get().symbol === symbol) return;
@@ -253,8 +221,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
     if (!connection) return;
 
     const requestId = ++symbolRequestId;
-    const previousSubscription = get().subscriptionRef ?? get().pollingRef;
-    previousSubscription?.close();
+    get().subscriptionRef?.close();
 
     set({
       symbol,
@@ -263,8 +230,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
       lastDataReceivedAt: null,
       isLoading: true,
       error: null,
-      subscriptionRef: null,
-      ...getBinanceCompatibilityState(get().sourceId, true, true, get().symbols, null)
+      subscriptionRef: null
     });
 
     const backtestStore = useBacktestStore.getState();
@@ -283,8 +249,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
 
       backtestStore.loadData(parsedCandles, symbol);
       set({
-        isLoading: false,
-        ...getBinanceCompatibilityState(get().sourceId, true, false, get().symbols, null)
+        isLoading: false
       });
 
       const subscription = connection.subscribeCandles(symbol, '1m', liveCandle => {
@@ -309,21 +274,16 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
       set({
         subscriptionRef: subscription,
         lastDataReceivedAt: Date.now(),
-        isDataStale: false,
-        ...getBinanceCompatibilityState(get().sourceId, true, false, get().symbols, subscription)
+        isDataStale: false
       });
     } catch (error) {
       if (requestId !== symbolRequestId) return;
       set({
         isLoading: false,
         isDataStale: get().sourceId === 'rithmic',
-        error: getErrorMessage(error),
-        ...getBinanceCompatibilityState(get().sourceId, true, false, get().symbols, null)
+        error: getErrorMessage(error)
       });
     }
-  },
-
-  connectBinance: () => get().connectSource('binance'),
-  disconnectBinance: () => get().disconnectSource()
+  }
   });
 });
