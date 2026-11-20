@@ -163,7 +163,7 @@ export function useContextMenu({
             }
           },
           {
-            label: 'Chart Settings…',
+            label: 'Chart Properties…',
             icon: React.createElement(Settings2, { size: 16 }),
             onClick: () => useChartStyleStore.getState().setEditorOpen(true)
           }

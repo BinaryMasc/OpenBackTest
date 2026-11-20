@@ -85,7 +85,7 @@ export function CandleStyleEditor({ onClose }: CandleStyleEditorProps) {
       className="absolute top-4 right-4 bg-dark-800 border border-dark-700 rounded-lg p-4 shadow-2xl z-50 w-64 max-h-[calc(100%-2rem)] overflow-y-auto custom-scrollbar text-sm"
     >
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-sm font-semibold text-slate-200">Candle Properties</h3>
+        <h3 className="text-sm font-semibold text-slate-200">Chart Properties</h3>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-200 transition-colors" aria-label="Close">
           <X size={16} />
         </button>

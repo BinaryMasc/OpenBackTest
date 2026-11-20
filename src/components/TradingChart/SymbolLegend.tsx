@@ -1,8 +1,9 @@
-import { Settings, History, Check, ChevronDown, Play, Pause, ChevronRight, ChevronsRight, LayoutGrid } from 'lucide-react';
+import { Settings, Settings2, History, Check, ChevronDown, Play, Pause, ChevronRight, ChevronsRight, LayoutGrid, CalendarRange } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useBacktestStore } from '../../store/useBacktestStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useTradeStore } from '../../store/useTradeStore';
+import { useChartStyleStore } from '../../store/useChartStyleStore';
 import { TIMEFRAMES } from '../../types';
 
 /**
@@ -38,6 +39,9 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
 
   const showTradeHistory = useTradeStore(state => state.showTradeHistory);
   const setShowTradeHistory = useTradeStore(state => state.setShowTradeHistory);
+  const showDaySeparators = useChartStyleStore(state => state.daySeparator.enabled);
+  const setDaySeparator = useChartStyleStore(state => state.setDaySeparator);
+  const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
 
   const [isOpen, setIsOpen] = useState(false);
   const [isTfOpen, setIsTfOpen] = useState(false);
@@ -249,6 +253,33 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
               <span>Show History Trades</span>
             </div>
             {showTradeHistory && <Check size={14} className="text-primary-500" />}
+          </button>
+
+          <button
+            onClick={() => {
+              setDaySeparator({ enabled: !showDaySeparators });
+              setIsOpen(false);
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-300 hover:bg-primary-500/10 hover:text-primary-400 transition-colors group"
+          >
+            <div className="flex items-center gap-2">
+              <CalendarRange size={14} className="text-slate-500 group-hover:text-primary-500 transition-colors" />
+              <span>Show Day Separators</span>
+            </div>
+            {showDaySeparators && <Check size={14} className="text-primary-500" />}
+          </button>
+
+          <button
+            onClick={() => {
+              setEditorOpen(true);
+              setIsOpen(false);
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-300 hover:bg-primary-500/10 hover:text-primary-400 transition-colors group"
+          >
+            <div className="flex items-center gap-2">
+              <Settings2 size={14} className="text-slate-500 group-hover:text-primary-500 transition-colors" />
+              <span>Chart Properties…</span>
+            </div>
           </button>
         </div>
       )}
