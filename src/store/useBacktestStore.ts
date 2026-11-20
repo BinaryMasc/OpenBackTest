@@ -4,7 +4,7 @@ import { MAX_SYNTHETIC_CANDLE_GAP_SECONDS } from '../utils/candleGaps';
 import { useChartStateStore } from './useChartStateStore';
 
 
-interface BacktestState {
+export interface BacktestState {
   rawData: Candle[];
   symbol: string;
   currentIndex: number;

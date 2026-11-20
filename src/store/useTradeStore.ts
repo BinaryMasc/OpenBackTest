@@ -27,7 +27,7 @@ function isCurrentSymbol(positionSymbol: string | null): boolean {
 
 export type { PositionType, Trade, Position } from '../lib/trading/engine';
 
-interface TradeState {
+export interface TradeState {
   balance: number;
   realizedPnL: number;
   unrealizedPnL: number;

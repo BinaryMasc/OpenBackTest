@@ -27,6 +27,11 @@ import { Controls } from '../../src/components/Controls';
 
 describe('Controls mobile sidebar', () => {
   const setMode = vi.fn();
+  let marketDataState: {
+    sourceId: string | null;
+    isLoading: boolean;
+    disconnectSource: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     const backtestState = {
@@ -46,7 +51,7 @@ describe('Controls mobile sidebar', () => {
       stepForward: vi.fn(),
       importState: vi.fn()
     };
-    const marketDataState = {
+    marketDataState = {
       sourceId: null,
       isConnected: false,
       isLoading: false,
@@ -59,11 +64,13 @@ describe('Controls mobile sidebar', () => {
 
     setMode.mockReset();
     backtestStoreHook.mockReset();
-    backtestStoreHook.mockReturnValue(backtestState);
+    backtestStoreHook.mockImplementation((selector?: (state: typeof backtestState) => unknown) =>
+      selector ? selector(backtestState) : backtestState);
     backtestStoreHook.getState.mockReset();
     backtestStoreHook.getState.mockReturnValue(backtestState);
     marketDataStoreHook.mockReset();
-    marketDataStoreHook.mockReturnValue(marketDataState);
+    marketDataStoreHook.mockImplementation((selector?: (state: unknown) => unknown) =>
+      selector ? selector(marketDataState) : marketDataState);
     marketDataStoreHook.getState.mockReset();
     marketDataStoreHook.getState.mockReturnValue(marketDataState);
     loadStoredCredentials.mockReset();
@@ -114,11 +121,6 @@ describe('Controls mobile sidebar', () => {
 
   it('cancels an in-flight Rithmic connection when the dialog is closed', () => {
     const { rerender } = render(<Controls />);
-    const marketDataState = marketDataStoreHook.mock.results.at(-1)?.value as {
-      sourceId: string | null;
-      isLoading: boolean;
-      disconnectSource: ReturnType<typeof vi.fn>;
-    };
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect with Rithmic credentials' }));
     marketDataState.sourceId = 'rithmic';
