@@ -11,6 +11,7 @@ import {
   getMarketDataSource
 } from '../services/marketDataRegistry';
 import { useBacktestStore } from './useBacktestStore';
+import { fillShortCandleGaps } from '../utils/candleGaps';
 import { getErrorMessage as toErrorMessage } from '../lib/errors';
 
 interface MarketDataState {
@@ -247,7 +248,10 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => {
         return;
       }
 
-      backtestStore.loadData(parsedCandles, symbol);
+      // Trade-replay feeds (Rithmic) only emit minutes that traded; fill
+      // short quiet gaps with flat bars so the chart looks continuous.
+      const candles = connection.sourceId === 'rithmic' ? fillShortCandleGaps(parsedCandles) : parsedCandles;
+      backtestStore.loadData(candles, symbol);
       set({
         isLoading: false
       });

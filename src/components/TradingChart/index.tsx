@@ -1,7 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import type { Overlay } from 'klinecharts';
 import { useBacktestStore } from '../../store/useBacktestStore';
-import { aggregateCandles } from '../../utils/aggregation';
 import { useChart } from '../../hooks/useChart';
 import { useDrawingTools } from '../../hooks/useDrawingTools';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
@@ -23,7 +22,7 @@ import { useContextMenu } from '../../hooks/useContextMenu';
 import { CandleStyleEditor } from './CandleStyleEditor';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
 import type { Timeframe } from '../../types';
-import { fillShortCandleGaps } from '../../utils/candleGaps';
+import { getVisibleSeries } from '../../utils/series';
 import type { ExecutionPosition } from '../../services/execution';
 import {
   getAnchoredIndicatorForRangeOverlay,
@@ -66,16 +65,12 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
 
 
-  const aggregatedData = useMemo(() => {
-    if (rawData.length === 0 || currentIndex === -1) return [];
-    const visibleData = rawData.slice(0, currentIndex + 1);
-    const chartData = marketDataSourceId === 'rithmic'
-      ? fillShortCandleGaps(visibleData)
-      : visibleData;
-    return aggregateCandles(chartData, timeframe);
-  }, [rawData, currentIndex, timeframe, marketDataSourceId]);
+  const series = useMemo(
+    () => getVisibleSeries(rawData, timeframe, currentIndex),
+    [rawData, currentIndex, timeframe],
+  );
 
-  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, symbol, aggregatedData, timeframe });
+  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, symbol, series, timeframe });
   const isLiveDataLoading = marketDataLoading && marketDataSourceId !== null;
   const connectionWarning = marketDataSourceId === 'rithmic'
     ? marketDataConnectionLost
@@ -154,10 +149,10 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     chartId: id,
     chartReady,
     symbol,
-    dataReady: aggregatedData.length > 0,
+    dataReady: series.count > 0,
     onAnchoredOverlaySelected: handleOverlaySelected,
   });
-  useTradeOverlays(chartRef, chartReady);
+  useTradeOverlays(chartRef, chartReady, series.bars);
   const [pendingRangeIndicator, setPendingRangeIndicator] = useState<AnchoredIndicatorName | null>(null);
   const { addIndicator, removeIndicator, instances: indicatorInstances } = indicators;
 

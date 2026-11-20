@@ -9,6 +9,23 @@ export const MAX_SYNTHETIC_CANDLE_GAP_SECONDS = 12 * 60 * 60;
  * those short intervals so a quiet part of an open session does not look like
  * a broken chart, while leaving long market/session breaks untouched.
  */
+/** Flat, zero-volume bars continuing `previous` up to (excluding) `untilTime`. */
+export function flatCandlesUntil(previous: Candle, untilTime: number, intervalSeconds = 60): Candle[] {
+  const filler: Candle[] = [];
+  for (let time = previous.time + intervalSeconds; time < untilTime; time += intervalSeconds) {
+    filler.push({
+      time,
+      open: previous.close,
+      high: previous.close,
+      low: previous.close,
+      close: previous.close,
+      volume: 0,
+      symbol: previous.symbol,
+    });
+  }
+  return filler;
+}
+
 export function fillShortCandleGaps(
   candles: Candle[],
   intervalSeconds = 60,
@@ -39,17 +56,7 @@ export function fillShortCandleGaps(
     const gapSeconds = next.time - candle.time;
     if (gapSeconds <= intervalSeconds || gapSeconds > maximumGapSeconds) continue;
 
-    for (let time = candle.time + intervalSeconds; time < next.time; time += intervalSeconds) {
-      result.push({
-        time,
-        open: candle.close,
-        high: candle.close,
-        low: candle.close,
-        close: candle.close,
-        volume: 0,
-        symbol: candle.symbol,
-      });
-    }
+    result.push(...flatCandlesUntil(candle, next.time, intervalSeconds));
   }
 
   return result;
