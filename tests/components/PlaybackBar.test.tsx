@@ -75,4 +75,27 @@ describe('PlaybackBar', () => {
     fireEvent.change(slider, { target: { value: '8' } });
     expect(spySetIndex).toHaveBeenCalledWith(8);
   });
+
+  it('previews the date while dragging and seeks only on release', () => {
+    const minute = 1_735_689_600; // 2025-01-01 00:00 UTC
+    useBacktestStore.setState({
+      rawData: Array.from({ length: 10 }).map((_, i) => ({ time: minute + i * 60, open: 1, high: 2, low: 0, close: 1, volume: 10 })),
+      currentIndex: 2,
+      isPlaying: false,
+    });
+    const spySetIndex = vi.spyOn(useBacktestStore.getState(), 'setCurrentIndex');
+
+    render(<PlaybackBar />);
+    const slider = screen.getByRole('slider', { name: 'Playback position' });
+
+    fireEvent.pointerDown(slider);
+    fireEvent.change(slider, { target: { value: '7' } });
+
+    expect(spySetIndex).not.toHaveBeenCalled();
+    expect(screen.getByText('7 / 9')).toBeInTheDocument();
+    expect(screen.getAllByText('2025-01-01 00:07')).toHaveLength(2);
+
+    fireEvent.pointerUp(window);
+    expect(spySetIndex).toHaveBeenCalledWith(7);
+  });
 });
