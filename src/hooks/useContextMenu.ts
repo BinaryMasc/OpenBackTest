@@ -1,8 +1,10 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { Chart } from 'klinecharts';
+import { CANDLE_PANE_ID } from '../lib/chart/constants';
 import type { MenuGroup } from '../components/TradingChart/ContextMenu';
 import type { ExecutionConfirmation, ExecutionPosition, OrderRequest } from '../services/execution';
-import { Target, ShieldAlert, Maximize2 } from 'lucide-react';
+import { Target, ShieldAlert, Maximize2, Settings2 } from 'lucide-react';
+import { useChartStyleStore } from '../store/useChartStyleStore';
 import React from 'react';
 
 interface UseContextMenuProps {
@@ -47,7 +49,7 @@ export function useContextMenu({
     const x = e.clientX - bounding.left;
     const y = e.clientY - bounding.top;
 
-    const result = chart.convertFromPixel([{ x, y }], { paneId: 'candle_pane' });
+    const result = chart.convertFromPixel([{ x, y }], { paneId: CANDLE_PANE_ID });
     const point = Array.isArray(result) ? result[0] : result;
     if (point && point.value !== undefined) {
       setContextMenu({ x: e.clientX, y: e.clientY, price: point.value });
@@ -159,6 +161,11 @@ export function useContextMenu({
               chartRef.current?.resize();
               chartRef.current?.setOffsetRightDistance(50);
             }
+          },
+          {
+            label: 'Chart Properties…',
+            icon: React.createElement(Settings2, { size: 16 }),
+            onClick: () => useChartStyleStore.getState().setEditorOpen(true)
           }
         ]
       }

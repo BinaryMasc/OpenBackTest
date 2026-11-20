@@ -6,10 +6,13 @@ import type { Chart } from 'klinecharts';
 describe('useDrawingTools', () => {
   const onOverlayCreated = vi.fn();
   const onOverlaySelected = vi.fn();
+  // Loosely typed test doubles for the KlineCharts instance and DOM node.
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   let mockChart: any;
   let chartRef: any;
   let containerRef: any;
   let containerElement: any;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   beforeEach(() => {
     vi.clearAllMocks();

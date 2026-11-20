@@ -8,7 +8,48 @@ const OVERLAY_LABEL_TEXT = '#f8fafc';
 export const ANCHORED_VWAP_RANGE_OVERLAY = 'anchoredVWAPRange';
 export const ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY = 'anchoredVolumeProfileRange';
 
-export function getAnchoredIndicatorForRangeOverlay(name: string): 'AVWAP' | 'AVP' | null {
+export type AnchoredIndicatorName = 'AVWAP' | 'AVP';
+
+export function isAnchoredIndicator(name: string): name is AnchoredIndicatorName {
+  return name === 'AVWAP' || name === 'AVP';
+}
+
+export function getAnchoredRangeLabel(name: AnchoredIndicatorName): string {
+  return name === 'AVWAP' ? 'Anchored VWAP range' : 'Anchored Volume Profile range';
+}
+
+/** Ordered [start, end] timestamps of a two-point range overlay. */
+export function getOverlayTimestampRange(overlay: Pick<Overlay, 'points'>): [number, number] | null {
+  const first = overlay.points?.[0]?.timestamp;
+  const second = overlay.points?.[1]?.timestamp;
+  if (!isFiniteNumber(first) || !isFiniteNumber(second)) return null;
+  return [Math.min(first, second), Math.max(first, second)];
+}
+
+/** Merges `patch` into an overlay's object-shaped extendData. */
+export function patchOverlayExtendData(chart: Chart, overlay: Pick<Overlay, 'id' | 'extendData'>, patch: Record<string, unknown>): void {
+  const current = overlay.extendData && typeof overlay.extendData === 'object'
+    ? overlay.extendData as Record<string, unknown>
+    : {};
+  chart.overrideOverlay({ id: overlay.id, extendData: { ...current, ...patch } });
+}
+
+/**
+ * Snaps a dragged anchored range to existing candles, reports the new range
+ * and keeps its handles visible while it stays selected.
+ */
+export function commitAnchoredRangeMove(
+  chart: Chart,
+  overlay: Overlay,
+  onRangeChanged: (overlay: Overlay, startTimestamp: number, endTimestamp: number) => void,
+): void {
+  const clamped = clampAnchoredRangeToData(chart, overlay);
+  const range = getOverlayTimestampRange(clamped);
+  if (range) onRangeChanged(clamped, range[0], range[1]);
+  patchOverlayExtendData(chart, clamped, { showHandles: true });
+}
+
+export function getAnchoredIndicatorForRangeOverlay(name: string): AnchoredIndicatorName | null {
   if (name === ANCHORED_VWAP_RANGE_OVERLAY) return 'AVWAP';
   if (name === ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY) return 'AVP';
   return null;
@@ -18,6 +59,10 @@ export function getRangeOverlayForAnchoredIndicator(name: string): string | null
   if (name === 'AVWAP') return ANCHORED_VWAP_RANGE_OVERLAY;
   if (name === 'AVP') return ANCHORED_VOLUME_PROFILE_RANGE_OVERLAY;
   return null;
+}
+
+export function isAnchoredRangeOverlay(name: string): boolean {
+  return getAnchoredIndicatorForRangeOverlay(name) !== null;
 }
 
 export function clampAnchoredRangeToData(chart: Chart, overlay: Overlay): Overlay {

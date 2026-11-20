@@ -9,6 +9,8 @@ import type {
   ExecutionFill
 } from '../services/execution';
 import { useMarketDataStore } from './useMarketDataStore';
+import { getErrorMessage as toErrorMessage } from '../lib/errors';
+import { sameSymbol } from '../lib/symbols';
 
 interface ExecutionStoreState {
   connection: ExecutionConnection | null;
@@ -37,7 +39,7 @@ interface ExecutionStoreState {
 let requestSequence = 0;
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Account connection failed';
+  return toErrorMessage(error, 'Account connection failed');
 }
 
 function closeSubscription(subscription: { close: () => void } | null) {
@@ -268,14 +270,9 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => {
             if (!hasPosition && !hasWorkingOrder) break;
             continue;
           }
-          const normalizedSymbol = symbol.toUpperCase();
-          const sameSymbol = (value: string) => {
-            const normalized = value.toUpperCase();
-            return normalized === normalizedSymbol || normalized.split('.')[0] === normalizedSymbol.split('.')[0];
-          };
-          const hasPosition = state.positions.some(position => sameSymbol(position.symbol) && position.quantity > 0);
+          const hasPosition = state.positions.some(position => sameSymbol(position.symbol, symbol) && position.quantity > 0);
           const hasWorkingOrder = state.orders.some(order =>
-            sameSymbol(order.symbol) && (order.status === 'pending' || order.status === 'working' || order.status === 'partially-filled')
+            sameSymbol(order.symbol, symbol) && (order.status === 'pending' || order.status === 'working' || order.status === 'partially-filled')
           );
           if (!hasPosition && !hasWorkingOrder) break;
         }

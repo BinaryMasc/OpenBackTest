@@ -35,15 +35,17 @@ The codebase follows a **Decoupled Bridge Architecture**:
 UI components categorized by functional area.
 - **`ChartGrid.tsx`**: Dynamic, resizable grid layout using `react-resizable-panels` to display up to 3 charts simultaneously.
 - **`TradingChart/`**: All components related to the chart interface (overlays, menus, legends, individual chart containers).
-- **`Controls.tsx`**: Top navigation, data loading controls, and session import/export management.
-- **`PlaybackBar.tsx`**: The bottom timeline and playback controls.
+- **`Controls.tsx`**: Left sidebar shell (mobile drawer). Its sections live in `controls/`: `ModeSelector`, `SessionSection`, `DataSourceSection` (CSV/presets/broker connect), `CurrentTickTime`, and the `useRithmicConnection` hook.
+- **`PlaybackBar.tsx`**: Playback scrub bar and step controls. Dragging previews the date and seeks on release.
 - **`TradingPanel.tsx`**: The right-side panel for trade execution and account status.
 - **`ActualAccountPanel.tsx`**: Broker account snapshot, live statistics, and guarded Rithmic market-order controls.
 - **`StatsModal.tsx`**: Performance analysis dashboard with equity curve and export features.
 
 ### `src/hooks`
 Custom React hooks encapsulating complex logic.
-- **`useChart.ts`**: Lifecycle management for the KlineCharts instance.
+- **`useChart.ts`**: Lifecycle management for the KlineCharts instance; pushes the visible series into the chart (step = update last bar, anything else = reload).
+- **`useDaySeparators.ts`**: Keeps the day-separator indicator in sync with the chart style settings.
+- **`usePlaybackTimer.ts`**: Advances playback at `playbackSpeed`; mounted once in `App`.
 - **`useIndicators.ts`**: Logic for adding, removing, and managing technical indicators.
 - **`useTradeOverlays.ts`**: Rendering logic for TP/SL lines and trade entry areas.
 - **`useContextMenu.ts`**: Logic for the chart's right-click interaction.
@@ -51,18 +53,30 @@ Custom React hooks encapsulating complex logic.
 ### `src/store`
 Zustand stores defining the global state and actions.
 - **`useBacktestStore.ts`**: Controls data playback (Play/Pause/Step), symbol selection, and multi-chart state management (array of `ChartConfig`).
-- **`useTradeStore.ts`**: Core trading engine. Manages positions, orders, PnL calculations, trade history, and session statistics.
+- **`useTradeStore.ts`**: Simulation account state. Validates orders (blown account, symbol lock, leverage) and applies fills computed by `lib/trading/engine.ts`.
 - **`useMarketDataStore.ts`**: Manages provider-neutral connection state, normalized symbols, historical data, and live candle subscriptions.
 - **`useExecutionStore.ts`**: Owns the selected broker account, live account snapshot, execution subscriptions, and order actions without touching simulation state.
-- **`useBinanceStore.ts`**: Deprecated compatibility alias for `useMarketDataStore`.
-- **`useChartStyleStore.ts`**: Manages styling properties for the chart, such as bullish/bearish candle colors, and persists user settings in localStorage.
+- **`useChartStyleStore.ts`**: Persistent chart styles: candle colors and day-separator settings.
 
 ### `src/lib/chart`
 Low-level extensions for KlineCharts.
 - **`customIndicators.ts`**: Registry for custom indicators and their default parameters.
+- **`indicators/daySeparators.ts`**: Draw-only indicator for day boundaries, plus the session-day math (timezone + session start, DST-aware).
 - **`indicators/`**: One implementation file per custom indicator (ATR, anchored VWAP, anchored Volume Profile, and VPVR).
 - **`overlays.ts`**: Registration of custom visual elements (e.g., TP/SL lines and anchored indicator range selectors).
 - **`constants.ts`**: Shared IDs and configuration constants for the chart.
+
+### `src/lib` (other)
+- **`trading/engine.ts`**: Pure netting engine (`applyFill`, `closeAll`, `unrealizedPnL`, `triggeredExit`). No React/Zustand.
+- **`symbols.ts`**: `sameSymbol` (exchange-suffix tolerant) and `getSymbolKey` for per-symbol persistence.
+- **`errors.ts`**: `getErrorMessage`.
+
+### `src/utils`
+- **`series.ts`**: Cached per-(data set, timeframe) bar aggregation and the per-tick `VisibleSeries` (only the bar at the cursor is rebuilt).
+- **`aggregation.ts`**, **`candleGaps.ts`**, **`csv.ts`**: Candle bucketing, flat-bar gap filling, CSV parsing.
+
+### `src/services` (other)
+- **`session.ts`**: Session file export/import.
 
 ### `src/types`
 - **`index.ts`**: Shared TypeScript interfaces for Candles, Trades, and Timeframes.
@@ -78,12 +92,12 @@ Low-level extensions for KlineCharts.
 | `src/components/ChartGrid.tsx` | Manages the resizable split-pane layout for multiple charts. |
 | `src/hooks/useChart.ts` | Initializes chart, handles data updates, and manages responsive resizing with isolated container IDs. |
 | `src/store/useBacktestStore.ts` | Centralizes data state; includes `stepForward`, `togglePlayback`, `loadData`, `updateLiveCandle`, and multi-chart configurations. |
-| `src/store/useTradeStore.ts` | Executes trades; tracks account equity, leverage, and aggregates positions for statistics. |
+| `src/store/useTradeStore.ts` | Validates orders and applies engine results; tracks account equity, leverage, and finished positions for statistics. |
+| `src/lib/trading/engine.ts` | Pure order netting: open, average, reduce, close, flip; PnL and TP/SL helpers. |
 | `src/store/useMarketDataStore.ts` | Owns the active market-data connection and maps provider events into normalized candles. |
 | `src/store/useExecutionStore.ts` | Owns actual-account state and routes provider-neutral orders through the active provider's execution adapter. |
-| `src/store/useBinanceStore.ts` | Compatibility alias for the provider-neutral market-data store. |
 | `src/store/useChartStyleStore.ts` | Central store managing persistent chart styles and styling properties. |
-| `src/components/TradingChart/CandleStyleEditor.tsx` | Floating overlay editor for bullish/bearish candle, border, and wick colors. |
+| `src/components/TradingChart/CandleStyleEditor.tsx` | Chart Properties panel: candle colors, background, and day separators. Opens from the chart menu, right-click, or double-click on a candle. |
 | `src/components/StatsModal.tsx` | Calculates and displays Win Rate, Profit Factor, R/R, and Equity Curve; handles CSV exports. |
 | `src/lib/chart/customIndicators.ts` | Registry and defaults for indicators not natively supported by KlineCharts. |
 | `src/lib/chart/indicators/*.ts` | One file per custom indicator implementation; anchored VWAP and anchored Volume Profile receive their selected time range from chart overlays. |
@@ -91,6 +105,7 @@ Low-level extensions for KlineCharts.
 | `src/components/TradingChart/DrawingToolbar.tsx` | Left-side sidebar for chart annotation tools (Lines, Measures). |
 | `src/hooks/useIndicators.ts` | Bridges the store state to the KlineCharts indicator API. |
 | `src/utils/aggregation.ts` | Logic to convert 1m raw data into higher timeframes (5m, 1h, etc.). |
+| `src/utils/series.ts` | Incremental visible series for playback (cached bars + partial bar at the cursor). |
 | `src/services/binance.ts` | Handles Binance API interactions (fetching symbols, historical klines, live polling). |
 | `src/services/rithmic.ts` | Browser-side WebSocket adapter for the local RAPI+ Rithmic market-data gateway. |
 | `src/services/marketData.ts` | Shared `MarketDataSource`, `MarketDataConnection`, and subscription interfaces for provider adapters. |
@@ -110,7 +125,8 @@ Low-level extensions for KlineCharts.
   - Choose the indicator from the chart's Indicators menu, then draw the two-point range overlay on the chart.
   - Drag either endpoint to recalculate the selected range. The range and indicator settings are persisted per symbol and chart screen.
 - **Modifying Trading Logic**:
-  - Edit `src/store/useTradeStore.ts` for execution logic.
+  - Edit `src/lib/trading/engine.ts` for netting/PnL math (pinned by `tests/store/useTradeStore.golden.test.ts`; update its snapshot only for intended changes).
+  - Edit `src/store/useTradeStore.ts` for order validation and store wiring.
   - Edit `src/hooks/useTradeOverlays.ts` to change how positions look on the chart.
 - **Adjusting Statistics & Reporting**:
   - Statistics are calculated in `src/components/StatsModal.tsx` using `finishedPositions` from the trade store.
@@ -132,7 +148,7 @@ When working on features, bug fixes, or enhancements, you MUST adhere to the fol
 
 ### State Flow
 1. **Data Source**: CSV/JSON loaded into `useBacktestStore`.
-2. **Aggregation**: `useBacktestStore` uses `aggregation.ts` to prepare data for the current timeframe.
+2. **Aggregation**: Each chart derives a `VisibleSeries` (`utils/series.ts`) from `rawData`, its timeframe and `currentIndex`; full aggregation is cached per data set.
 3. **Rendering**: `useChart` detects data changes and calls `chart.applyNewData()`.
 4. **Interaction**: User actions trigger `useTradeStore`, which updates overlays via `useTradeOverlays`.
 5. **Completion**: When a simulation is finished, `useTradeStore` aggregates all trades into `finishedPositions` and triggers the `StatsModal`.
@@ -180,7 +196,7 @@ graph TD
     UC & UIH & UT --> KC
     UC --> CSS
     KC <--> Lib
-    BS --> Agg["aggregation.ts"]
+    ChartUI --> Agg["utils/series.ts (aggregation)"]
 ```
 
 ## External Data Integration
@@ -193,7 +209,6 @@ OpenBackTest consumes live data through a provider-neutral connection contract.
 - **`src/services/binance.ts`** implements the current Binance Futures adapter: futures symbols, historical 1m klines, and REST-based live polling.
 - **`src/services/rithmic.ts`** implements the browser side of the Rithmic adapter. It speaks a small WebSocket protocol to the local .NET gateway and maps RAPI+ reference data, trade replay, and live trades into normalized symbols and candles.
 - **`src/store/useMarketDataStore.ts`** owns the active connection, loads historical data, starts/stops subscriptions, and maps provider symbols to normalized `MarketSymbol` values.
-- **`src/store/useBinanceStore.ts`** remains as a compatibility alias while consumers migrate to `useMarketDataStore`.
 - **`src/store/useBacktestStore.ts`** remains provider-agnostic and only receives normalized candles through `updateLiveCandle(kline)`.
 
 Rithmic market data and actual-account execution are available through the local `gateway/` project. The gateway uses the Quantower-compatible RAPI+ runtime and the checked-in Chicago paper profile, while credentials and native library paths remain environment/browser configuration. The provider-neutral execution contract is separate from chart data, so future providers such as Binance can add account and order adapters without changing the simulation code. The account-wide flatten path cancels all working orders and exits every open account position before reporting completion.

@@ -1,7 +1,10 @@
 import { useRef, useEffect, useState } from 'react';
 import { init, dispose, type Chart, TooltipShowRule, ActionType } from 'klinecharts';
-import type { Candle, Timeframe } from '../types';
+import type { Timeframe } from '../types';
+import { visibleBars, type VisibleSeries } from '../utils/series';
+import { getSymbolKey } from '../lib/symbols';
 import { registerCustomOverlays } from '../lib/chart/overlays';
+import { CANDLE_PANE_ID } from '../lib/chart/constants';
 import { registerCustomIndicators } from '../lib/chart/customIndicators';
 import { useChartStyleStore } from '../store/useChartStyleStore';
 import { useChartStateStore } from '../store/useChartStateStore';
@@ -9,16 +12,16 @@ import { useChartStateStore } from '../store/useChartStateStore';
 interface UseChartOptions {
   containerId: string;
   symbol?: string;
-  aggregatedData: Candle[];
+  series: VisibleSeries;
   timeframe: Timeframe;
 }
 
-export function useChart({ containerId, symbol = '', aggregatedData, timeframe }: UseChartOptions) {
+export function useChart({ containerId, symbol = '', series, timeframe }: UseChartOptions) {
   const chartRef = useRef<Chart | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const prevTimeframeRef = useRef(timeframe);
-  const prevDataLengthRef = useRef(0);
+  const prevCountRef = useRef(0);
   const symbolRef = useRef(symbol);
   const timeframeRef = useRef(timeframe);
   const restoredViewKeyRef = useRef<string | null>(null);
@@ -31,7 +34,8 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
   const { upColor, downColor, upBorderColor, downBorderColor, upWickColor, downWickColor } = useChartStyleStore();
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
     registerCustomOverlays();
     registerCustomIndicators();
     const chart = init(containerId);
@@ -40,6 +44,9 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
 
     if (chart) {
       chartRef.current = chart;
+      // The chart needs the mounted DOM node, so it can only be created in an
+      // effect; flag readiness so dependent hooks can attach to it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsReady(true);
       chart.setStyles('dark');
       
@@ -76,7 +83,6 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
         },
       });
 
-      const container = containerRef.current;
       handleDblClick = (e: MouseEvent) => {
         if (!chartRef.current) return;
         const rect = container.getBoundingClientRect();
@@ -85,7 +91,7 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
 
         const converted = chartRef.current.convertFromPixel(
           [{ x, y }],
-          { paneId: 'candle_pane' }
+          { paneId: CANDLE_PANE_ID }
         );
 
         const point = Array.isArray(converted) ? converted[0] : converted;
@@ -127,9 +133,7 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
       chart.subscribeAction(ActionType.OnVisibleRangeChange, saveViewState);
     }
     return () => {
-      if (handleDblClick && containerRef.current) {
-        containerRef.current.removeEventListener('dblclick', handleDblClick);
-      }
+      if (handleDblClick) container.removeEventListener('dblclick', handleDblClick);
       if (saveViewState && chart) {
         chart.unsubscribeAction(ActionType.OnZoom, saveViewState);
         chart.unsubscribeAction(ActionType.OnScroll, saveViewState);
@@ -139,13 +143,13 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
       chartRef.current = null;
       setIsReady(false);
     };
-  }, []);
+  }, [containerId]);
 
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !isReady || !symbol || aggregatedData.length === 0) return;
+    if (!chart || !isReady || !symbol || series.count === 0) return;
 
-    const restoreKey = `${symbol.trim().toUpperCase()}:${containerId}:${timeframe}`;
+    const restoreKey = `${getSymbolKey(symbol)}:${containerId}:${timeframe}`;
     if (restoredViewKeyRef.current === restoreKey) return;
 
     const savedView = useChartStateStore.getState().getView(symbol, containerId, timeframe);
@@ -167,7 +171,7 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
     }, 0);
 
     return () => clearTimeout(restoreTimeout);
-  }, [aggregatedData.length, containerId, isReady, symbol, timeframe]);
+  }, [series.count, containerId, isReady, symbol, timeframe]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -186,56 +190,43 @@ export function useChart({ containerId, symbol = '', aggregatedData, timeframe }
     });
   }, [upColor, downColor, upBorderColor, downBorderColor, upWickColor, downWickColor]);
 
+  // Push the visible series into the chart. A playback step only touches
+  // the last bar (and finalizes the previous one when a new bar starts);
+  // anything else (seek, new data set, timeframe switch) reloads the chart.
   useEffect(() => {
-    if (!chartRef.current) return;
+    const chart = chartRef.current;
+    if (!chart) return;
 
-    if (aggregatedData.length === 0) {
-      chartRef.current.applyNewData([]);
-      prevDataLengthRef.current = 0;
+    const { bars, count, last } = series;
+    const previousCount = prevCountRef.current;
+    const isNewTimeframe = timeframe !== prevTimeframeRef.current;
+    prevTimeframeRef.current = timeframe;
+    prevCountRef.current = count;
+
+    if (!last) {
+      chart.applyNewData([]);
       return;
     }
 
-    const chartData = aggregatedData.map(d => ({
-      timestamp: d.time * 1000,
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-      volume: d.volume || 0,
-    }));
+    const loaded = chart.getDataList();
+    const isSameDataSet = loaded.length > 0 && loaded[0].timestamp === (count > 1 ? bars[0] : last).timestamp;
+    const isStep = count === previousCount || count === previousCount + 1;
 
-    const dataList = chartRef.current.getDataList();
-    const isNewTimeframe = timeframe !== prevTimeframeRef.current;
-
-    // Fix: If data length decreased (stepping backward), we must use applyNewData
-    if (
-      dataList.length === 0 ||
-      isNewTimeframe ||
-      chartData.length < prevDataLengthRef.current ||
-      chartData.length - prevDataLengthRef.current > 1
-    ) {
-      chartRef.current.applyNewData(chartData);
+    if (!isSameDataSet || isNewTimeframe || !isStep) {
+      chart.applyNewData(visibleBars(series));
       if (isNewTimeframe) {
         // Defer resize to allow klinecharts to process applyNewData and avoid UI freeze
-        setTimeout(() => {
-          chartRef.current?.resize();
-        }, 50);
+        setTimeout(() => chartRef.current?.resize(), 50);
       }
-    } else {
-      const lastChartTimestamp = dataList[dataList.length - 1]?.timestamp;
-      const lastDataTimestamp = chartData[chartData.length - 1].timestamp;
-      const startedNewCandle = chartData.length > dataList.length
-        || (lastChartTimestamp !== undefined && lastDataTimestamp > lastChartTimestamp);
-      if (chartData.length >= 2 && startedNewCandle) {
-        // Update the second-to-last candle as well to ensure its final closed state is rendered
-        chartRef.current.updateData(chartData[chartData.length - 2]);
-      }
-      chartRef.current.updateData(chartData[chartData.length - 1]);
+      return;
     }
 
-    prevTimeframeRef.current = timeframe;
-    prevDataLengthRef.current = chartData.length;
-  }, [aggregatedData, timeframe]);
+    if (count === previousCount + 1 && count >= 2) {
+      // The previous bar is complete now; render its final state.
+      chart.updateData(bars[count - 2]);
+    }
+    chart.updateData(last);
+  }, [series, timeframe]);
 
   useEffect(() => {
     const handleResize = () => {

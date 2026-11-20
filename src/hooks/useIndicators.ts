@@ -4,15 +4,21 @@ import type { Chart, Overlay } from 'klinecharts';
 import { LineType } from 'klinecharts';
 import type { IndicatorInstance } from '../types/indicatorTypes';
 import {
+  CANDLE_PANE_ID,
   DEFAULT_INDICATOR_PARAMS,
   INDICATORS_LIST,
   INDICATOR_DEFAULT_COLORS,
+  INDICATOR_RANGE_GROUP_ID,
 } from '../lib/chart/constants';
-import { INDICATOR_RANGE_GROUP_ID } from '../lib/chart/constants';
-import { clampAnchoredRangeToData, getRangeOverlayForAnchoredIndicator } from '../lib/chart/overlays';
+import {
+  commitAnchoredRangeMove,
+  getAnchoredRangeLabel,
+  getRangeOverlayForAnchoredIndicator,
+  isAnchoredIndicator,
+} from '../lib/chart/overlays';
 import { getAnchoredIndicatorEngineName, registerAnchoredIndicatorInstance } from '../lib/chart/customIndicators';
-import { isOscillatorIndicator } from '../lib/chart/utils';
-import { hexToRgba } from '../lib/chart/utils';
+import { hexToRgba, isOscillatorIndicator } from '../lib/chart/utils';
+import { getSymbolKey } from '../lib/symbols';
 import { useChartStateStore } from '../store/useChartStateStore';
 
 /**
@@ -21,7 +27,6 @@ import { useChartStateStore } from '../store/useChartStateStore';
  * with combined calcParams and per-line styles.
  */
 const MERGEABLE_OVERLAYS = new Set(['MA', 'EMA', 'SMA']);
-const RANGE_INDICATORS = new Set(['AVWAP', 'AVP']);
 let indicatorIdSequence = 0;
 
 export interface AnchoredIndicatorRange {
@@ -38,39 +43,53 @@ interface UseIndicatorsOptions {
   onAnchoredOverlaySelected?: (overlay: Overlay) => void;
 }
 
-function removeIndicatorInstances(chart: Chart, instances: IndicatorInstance[]): void {
-  const removed = new Set<string>();
-  instances.forEach(instance => {
-    if (RANGE_INDICATORS.has(instance.name)) {
-      chart.removeOverlay({ id: getRangeOverlayId(instance) });
-    }
-    const key = `${instance.paneId}:${getIndicatorEngineName(instance)}`;
-    if (removed.has(key)) return;
-    removed.add(key);
-    chart.removeIndicator(instance.paneId, getIndicatorEngineName(instance));
-  });
+type StyleChanges = Partial<Pick<IndicatorInstance, 'calcParams' | 'color' | 'opacity'>>;
+
+function lineStyles(color: string, opacity: number) {
+  return [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: hexToRgba(color, opacity) }];
 }
 
-function getRangeOverlayId(instance: IndicatorInstance): string {
+export function getRangeOverlayId(instance: Pick<IndicatorInstance, 'id' | 'rangeOverlayId'>): string {
   return instance.rangeOverlayId ?? `${instance.id}_range`;
 }
 
-function getIndicatorEngineName(instance: IndicatorInstance): string {
-  if (!RANGE_INDICATORS.has(instance.name)) return instance.name;
-  const name = instance.name as 'AVWAP' | 'AVP';
-  const engineName = getAnchoredIndicatorEngineName(name, instance.id);
-  registerAnchoredIndicatorInstance(name, engineName);
+/**
+ * The name the indicator is registered under in KlineCharts. Anchored
+ * indicators register one template per instance so several can coexist.
+ */
+function getIndicatorEngineName(instance: Pick<IndicatorInstance, 'id' | 'name'>): string {
+  if (!isAnchoredIndicator(instance.name)) return instance.name;
+  const engineName = getAnchoredIndicatorEngineName(instance.name, instance.id);
+  registerAnchoredIndicatorInstance(instance.name, engineName);
   return engineName;
 }
 
+/** Oscillators live in their own pane; every other indicator overlays the candles. */
+function getIndicatorPane(instance: IndicatorInstance): string {
+  return isOscillatorIndicator(instance.name) ? instance.paneId : CANDLE_PANE_ID;
+}
+
+function removeIndicatorInstances(chart: Chart, instances: IndicatorInstance[]): void {
+  const removed = new Set<string>();
+  instances.forEach(instance => {
+    if (isAnchoredIndicator(instance.name)) {
+      chart.removeOverlay({ id: getRangeOverlayId(instance) });
+    }
+    const engineName = getIndicatorEngineName(instance);
+    const key = `${instance.paneId}:${engineName}`;
+    if (removed.has(key)) return;
+    removed.add(key);
+    chart.removeIndicator(instance.paneId, engineName);
+  });
+}
+
 function getAnchorTimestamps(instance: IndicatorInstance): [number, number] | null {
-  if (Number.isFinite(instance.anchorStartTimestamp) && Number.isFinite(instance.anchorEndTimestamp)) {
-    return [
-      Math.min(instance.anchorStartTimestamp as number, instance.anchorEndTimestamp as number),
-      Math.max(instance.anchorStartTimestamp as number, instance.anchorEndTimestamp as number),
-    ];
+  const { anchorStartTimestamp: start, anchorEndTimestamp: end } = instance;
+  if (Number.isFinite(start) && Number.isFinite(end)) {
+    return [Math.min(start!, end!), Math.max(start!, end!)];
   }
-  if (RANGE_INDICATORS.has(instance.name) && instance.calcParams.length >= 2) {
+  // Older sessions stored the range in the first two calcParams.
+  if (isAnchoredIndicator(instance.name) && instance.calcParams.length >= 2) {
     const first = Number(instance.calcParams[0]);
     const second = Number(instance.calcParams[1]);
     if (Number.isFinite(first) && Number.isFinite(second)) return [Math.min(first, second), Math.max(first, second)];
@@ -84,13 +103,6 @@ function findDataIndex(dataList: Array<{ timestamp: number }>, timestamp: number
   return next >= 0 ? next : dataList.length - 1;
 }
 
-function getOverlayTimestampRange(overlay: Overlay): [number, number] | null {
-  const first = overlay.points[0]?.timestamp;
-  const second = overlay.points[1]?.timestamp;
-  if (typeof first !== 'number' || !Number.isFinite(first) || typeof second !== 'number' || !Number.isFinite(second)) return null;
-  return [Math.min(first, second), Math.max(first, second)];
-}
-
 function restoreRangeOverlay(
   chart: Chart,
   instance: IndicatorInstance,
@@ -99,26 +111,19 @@ function restoreRangeOverlay(
 ): void {
   const overlayName = getRangeOverlayForAnchoredIndicator(instance.name);
   const range = getAnchorTimestamps(instance);
-  if (!overlayName || !range || typeof chart.getDataList !== 'function') return;
+  if (!overlayName || !range || !isAnchoredIndicator(instance.name) || typeof chart.getDataList !== 'function') return;
   const dataList = chart.getDataList();
   if (dataList.length === 0) return;
-  const startIndex = findDataIndex(dataList, range[0]);
-  const endIndex = findDataIndex(dataList, range[1]);
-  if (startIndex < 0 || endIndex < 0) return;
-  const points = [startIndex, endIndex].map(index => ({
-    dataIndex: index,
-    timestamp: dataList[index].timestamp,
-    value: dataList[index].close,
-  }));
+  const points = range.map(timestamp => {
+    const index = findDataIndex(dataList, timestamp);
+    return { dataIndex: index, timestamp: dataList[index].timestamp, value: dataList[index].close };
+  });
   chart.createOverlay({
     name: overlayName,
     id: getRangeOverlayId(instance),
     groupId: INDICATOR_RANGE_GROUP_ID,
     points,
-    extendData: {
-      label: instance.name === 'AVWAP' ? 'Anchored VWAP range' : 'Anchored Volume Profile range',
-      color: instance.color,
-    },
+    extendData: { label: getAnchoredRangeLabel(instance.name), color: instance.color },
     styles: {
       line: { color: hexToRgba(instance.color, instance.opacity) },
       polygon: {
@@ -132,18 +137,21 @@ function restoreRangeOverlay(
       return true;
     },
     onPressedMoveEnd: (event: { overlay: Overlay }) => {
-      const range = getOverlayTimestampRange(clampAnchoredRangeToData(chart, event.overlay));
-      if (range) onRangeChanged(event.overlay.id, range[0], range[1]);
-      const extendData = event.overlay.extendData && typeof event.overlay.extendData === 'object'
-        ? event.overlay.extendData as Record<string, unknown>
-        : {};
-      chart.overrideOverlay({
-        id: event.overlay.id,
-        extendData: { ...extendData, showHandles: true },
-      });
+      commitAnchoredRangeMove(chart, event.overlay, (overlay, start, end) => onRangeChanged(overlay.id, start, end));
       return true;
     },
-  }, 'candle_pane');
+  }, CANDLE_PANE_ID);
+}
+
+function initialCalcParams(name: string, range?: AnchoredIndicatorRange): number[] {
+  if (range) {
+    return name === 'AVWAP'
+      ? [range.startTimestamp, range.endTimestamp]
+      : [range.startTimestamp, range.endTimestamp, 120, 15, 70];
+  }
+  // Each mergeable instance contributes a single period.
+  if (MERGEABLE_OVERLAYS.has(name)) return [DEFAULT_INDICATOR_PARAMS[name]?.[0] ?? 14];
+  return [...(DEFAULT_INDICATOR_PARAMS[name] || [])];
 }
 
 export function useIndicators(
@@ -160,10 +168,16 @@ export function useIndicators(
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const colorIndexRef = useRef(0);
+  // Always the latest list, so chart callbacks never act on a stale render.
   const instancesRef = useRef<IndicatorInstance[]>([]);
   const hydratedKeyRef = useRef<string | null>(null);
 
-  const persistenceKey = `${symbol.trim().toUpperCase() || '__default__'}:${chartId}`;
+  const persistenceKey = `${getSymbolKey(symbol)}:${chartId}`;
+
+  const commit = useCallback((next: IndicatorInstance[]) => {
+    instancesRef.current = next;
+    setInstances(next);
+  }, []);
 
   const nextColor = useCallback(() => {
     const color = INDICATOR_DEFAULT_COLORS[colorIndexRef.current % INDICATOR_DEFAULT_COLORS.length];
@@ -175,138 +189,58 @@ export function useIndicators(
    * Sync all mergeable overlay instances of a given type to a single
    * klinecharts indicator with combined calcParams + per-line styles.
    */
-  const syncOverlay = useCallback(
-    (chart: Chart, name: string, allInstances: IndicatorInstance[]) => {
-      const visible = allInstances.filter(
-        i => i.name === name && i.paneId === 'candle_pane' && i.visible,
-      );
+  const syncMergedOverlay = useCallback((chart: Chart, name: string, allInstances: IndicatorInstance[]) => {
+    const visible = allInstances.filter(i => i.name === name && i.paneId === CANDLE_PANE_ID && i.visible);
+    chart.removeIndicator(CANDLE_PANE_ID, name);
+    if (visible.length === 0) return;
 
-      // Always remove first to avoid stale state
-      chart.removeIndicator('candle_pane', name);
-
-      if (visible.length === 0) return;
-
-      // Merge calcParams: each instance contributes its period(s)
-      const mergedParams = visible.flatMap(inst => inst.calcParams);
-
-      chart.createIndicator(
-        { name, calcParams: mergedParams },
-        true,
-        { id: 'candle_pane' },
-      );
-
-      // Build per-line styles matching each calcParam entry
-      const lineStyles = visible.flatMap(inst =>
-        inst.calcParams.map(() => ({
-          size: 2,
-          style: LineType.Solid,
-          smooth: false,
-          dashedValue: [2, 2],
-          color: hexToRgba(inst.color, inst.opacity),
-        })),
-      );
-
-      chart.overrideIndicator(
-        { name, styles: { lines: lineStyles } },
-        'candle_pane',
-      );
-    },
-    [],
-  );
+    chart.createIndicator({ name, calcParams: visible.flatMap(inst => inst.calcParams) }, true, { id: CANDLE_PANE_ID });
+    chart.overrideIndicator(
+      { name, styles: { lines: visible.flatMap(inst => inst.calcParams.map(() => lineStyles(inst.color, inst.opacity)[0])) } },
+      CANDLE_PANE_ID,
+    );
+  }, []);
 
   const updateAnchoredRange = useCallback(
     (overlayId: string, startTimestamp: number, endTimestamp: number) => {
       const chart = chartRef.current;
       if (!chart || !Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)) return;
-      const currentInstances = instancesRef.current;
-      const instance = currentInstances.find(item =>
-        RANGE_INDICATORS.has(item.name) && getRangeOverlayId(item) === overlayId,
+      const instance = instancesRef.current.find(item =>
+        isAnchoredIndicator(item.name) && getRangeOverlayId(item) === overlayId,
       );
       if (!instance) return;
 
       const start = Math.min(startTimestamp, endTimestamp);
       const end = Math.max(startTimestamp, endTimestamp);
+      // AVP keeps its three visual parameters after the range.
       const visualParams = instance.name === 'AVP' ? instance.calcParams.slice(-3) : [];
       const calcParams = [start, end, ...visualParams];
-      const newInstances = currentInstances.map(item => item.id === instance.id
-        ? {
-            ...item,
-            calcParams,
-            anchorStartTimestamp: start,
-            anchorEndTimestamp: end,
-          }
-        : item);
-      setInstances(newInstances);
-      instancesRef.current = newInstances;
-      chart.overrideIndicator({ name: getIndicatorEngineName(instance), calcParams }, 'candle_pane');
+      commit(instancesRef.current.map(item => item.id === instance.id
+        ? { ...item, calcParams, anchorStartTimestamp: start, anchorEndTimestamp: end }
+        : item));
+      chart.overrideIndicator({ name: getIndicatorEngineName(instance), calcParams }, CANDLE_PANE_ID);
     },
-    [chartRef],
+    [chartRef, commit],
   );
 
-  const restoreInstances = useCallback((chart: Chart, restoredInstances: IndicatorInstance[]) => {
-    const oscillatorInstances = restoredInstances.filter(instance => isOscillatorIndicator(instance.name));
-    const standaloneInstances = restoredInstances.filter(instance =>
-      !isOscillatorIndicator(instance.name) && !MERGEABLE_OVERLAYS.has(instance.name),
-    );
-
-    oscillatorInstances.forEach(instance => {
-      chart.createIndicator(
-        { name: instance.name, calcParams: instance.calcParams },
-        false,
-        { id: instance.paneId },
-      );
-      chart.overrideIndicator(
-        {
-          name: instance.name,
-          visible: instance.visible,
-          styles: {
-            lines: [{
-              size: 2,
-              style: LineType.Solid,
-              smooth: false,
-              dashedValue: [2, 2],
-              color: hexToRgba(instance.color, instance.opacity),
-            }]
-          }
-        },
-        instance.paneId,
-      );
-    });
-
-    standaloneInstances.forEach(instance => {
+  const restoreInstances = useCallback((chart: Chart, restored: IndicatorInstance[]) => {
+    restored.forEach(instance => {
+      if (MERGEABLE_OVERLAYS.has(instance.name)) return;
+      const isOscillator = isOscillatorIndicator(instance.name);
       const engineName = getIndicatorEngineName(instance);
-      chart.createIndicator(
-        { name: engineName, calcParams: instance.calcParams },
-        true,
-        { id: 'candle_pane' },
-      );
+      const pane = getIndicatorPane(instance);
+      chart.createIndicator({ name: engineName, calcParams: instance.calcParams }, !isOscillator, { id: pane });
       chart.overrideIndicator(
-        {
-          name: engineName,
-          visible: instance.visible,
-          styles: {
-            lines: [{
-              size: 2,
-              style: LineType.Solid,
-              smooth: false,
-              dashedValue: [2, 2],
-              color: hexToRgba(instance.color, instance.opacity),
-            }]
-          }
-        },
-        'candle_pane',
+        { name: engineName, visible: instance.visible, styles: { lines: lineStyles(instance.color, instance.opacity) } },
+        pane,
       );
-       if (RANGE_INDICATORS.has(instance.name)) {
-         restoreRangeOverlay(chart, instance, updateAnchoredRange, onAnchoredOverlaySelected);
-       }
+      if (isAnchoredIndicator(instance.name)) {
+        restoreRangeOverlay(chart, instance, updateAnchoredRange, onAnchoredOverlaySelected);
+      }
     });
 
-    MERGEABLE_OVERLAYS.forEach(name => syncOverlay(chart, name, restoredInstances));
-  }, [onAnchoredOverlaySelected, syncOverlay, updateAnchoredRange]);
-
-  useEffect(() => {
-    instancesRef.current = instances;
-  }, [instances]);
+    MERGEABLE_OVERLAYS.forEach(name => syncMergedOverlay(chart, name, restored));
+  }, [onAnchoredOverlaySelected, syncMergedOverlay, updateAnchoredRange]);
 
   // Restore the chart-specific indicators after the chart instance is ready.
   useEffect(() => {
@@ -314,18 +248,16 @@ export function useIndicators(
     if (!chart || !chartReady || !dataReady || hydratedKeyRef.current === persistenceKey) return;
 
     removeIndicatorInstances(chart, instancesRef.current);
-    const restoredInstances = useChartStateStore.getState().getIndicators(chartId, symbol);
-    setInstances(restoredInstances);
-    instancesRef.current = restoredInstances;
-    colorIndexRef.current = restoredInstances.length;
+    const restored = useChartStateStore.getState().getIndicators(chartId, symbol);
+    commit(restored);
+    colorIndexRef.current = restored.length;
     setEditingInstanceId(null);
-    restoreInstances(chart, restoredInstances);
+    restoreInstances(chart, restored);
     hydratedKeyRef.current = persistenceKey;
-  }, [chartId, chartReady, chartRef, dataReady, persistenceKey, restoreInstances, symbol]);
+  }, [chartId, chartReady, chartRef, commit, dataReady, persistenceKey, restoreInstances, symbol]);
 
   useEffect(() => {
-    // A restore effect can update the ref before this effect runs in the same
-    // commit. Do not let the pre-restore render overwrite saved indicators.
+    // Never let a render from before hydration overwrite the saved indicators.
     if (instances !== instancesRef.current || hydratedKeyRef.current !== persistenceKey) return;
     useChartStateStore.getState().saveIndicators(chartId, instances, symbol);
   }, [chartId, instances, persistenceKey, symbol]);
@@ -335,61 +267,27 @@ export function useIndicators(
     (name: string, range?: AnchoredIndicatorRange) => {
       const chart = chartRef.current;
       if (!chart) return;
-
-      const isAnchored = RANGE_INDICATORS.has(name);
+      const isAnchored = isAnchoredIndicator(name);
       if (isAnchored && !range) return;
 
       const uniqueId = `${name.toLowerCase()}_${Date.now()}_${indicatorIdSequence++}`;
       const color = nextColor();
-      const isOsc = isOscillatorIndicator(name);
+      const calcParams = initialCalcParams(name, isAnchored ? range : undefined);
       const isMergeable = MERGEABLE_OVERLAYS.has(name);
+      let paneId = CANDLE_PANE_ID;
 
-      // For mergeable overlays, each instance = one period
-      // For others, use the full default params
-      const calcParams = isAnchored && range
-        ? name === 'AVWAP'
-          ? [range.startTimestamp, range.endTimestamp]
-          : [range.startTimestamp, range.endTimestamp, 120, 15, 70]
-        : isMergeable
-        ? [DEFAULT_INDICATOR_PARAMS[name]?.[0] ?? 14]
-        : [...(DEFAULT_INDICATOR_PARAMS[name] || [])];
-
-      let paneId: string;
-
-      if (isOsc) {
-        // Oscillators get their own pane
-        const returned = chart.createIndicator(
-          { name, calcParams },
-          false,
-          { id: uniqueId },
+      if (!isMergeable) {
+        const isOscillator = isOscillatorIndicator(name);
+        const engineName = getIndicatorEngineName({ id: uniqueId, name });
+        // Oscillators get their own pane; KlineCharts returns its id.
+        const createdPane = chart.createIndicator(
+          { name: engineName, calcParams },
+          !isOscillator,
+          { id: isOscillator ? uniqueId : CANDLE_PANE_ID },
         );
-        paneId = returned ?? uniqueId;
-
-        // Apply color
-        const rgba = hexToRgba(color, 1);
+        if (isOscillator) paneId = createdPane ?? uniqueId;
         requestAnimationFrame(() => {
-          chartRef.current?.overrideIndicator(
-            { name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
-            paneId,
-          );
-        });
-      } else if (isMergeable) {
-        paneId = 'candle_pane';
-        // Sync will be called after state update below
-      } else {
-        // Non-mergeable overlays — stack on candle_pane
-        paneId = 'candle_pane';
-        const engineName = isAnchored
-          ? getAnchoredIndicatorEngineName(name as 'AVWAP' | 'AVP', uniqueId)
-          : name;
-        if (isAnchored) registerAnchoredIndicatorInstance(name as 'AVWAP' | 'AVP', engineName);
-        chart.createIndicator({ name: engineName, calcParams }, true, { id: 'candle_pane' });
-        const rgba = hexToRgba(color, 1);
-        requestAnimationFrame(() => {
-          chartRef.current?.overrideIndicator(
-            { name: engineName, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
-            'candle_pane',
-          );
+          chartRef.current?.overrideIndicator({ name: engineName, styles: { lines: lineStyles(color, 1) } }, paneId);
         });
       }
 
@@ -406,118 +304,76 @@ export function useIndicators(
         anchorEndTimestamp: range?.endTimestamp,
       };
 
-      const newInstances = [...instances, instance];
-      setInstances(newInstances);
+      const next = [...instancesRef.current, instance];
+      commit(next);
       setEditingInstanceId(uniqueId);
       setShowAddMenu(false);
 
-      // Sync mergeable overlays after adding
-      if (isMergeable) {
-        syncOverlay(chart, name, newInstances);
-      }
-      if (range) {
-        chart.overrideOverlay({
-          id: range.overlayId,
-          extendData: {
-            label: name === 'AVWAP' ? 'Anchored VWAP range' : 'Anchored Volume Profile range',
-            color,
-          },
-        });
+      if (isMergeable) syncMergedOverlay(chart, name, next);
+      if (range && isAnchored) {
+        chart.overrideOverlay({ id: range.overlayId, extendData: { label: getAnchoredRangeLabel(name), color } });
       }
       return instance;
     },
-    [chartRef, nextColor, instances, syncOverlay],
+    [chartRef, commit, nextColor, syncMergedOverlay],
   );
 
-  /** Remove an indicator instance */
+  /** Remove an indicator instance and, for anchored indicators, its range overlay. */
   const removeIndicator = useCallback(
     (id: string) => {
       const chart = chartRef.current;
       if (!chart) return;
-
-      const instance = instances.find(i => i.id === id);
+      const instance = instancesRef.current.find(i => i.id === id);
       if (!instance) return;
 
-      const newInstances = instances.filter(i => i.id !== id);
-
-      if (isOscillatorIndicator(instance.name)) {
-        chart.removeIndicator(instance.paneId, instance.name);
-      } else if (MERGEABLE_OVERLAYS.has(instance.name)) {
-        // Re-sync remaining instances of same type
-        syncOverlay(chart, instance.name, newInstances);
+      const next = instancesRef.current.filter(i => i.id !== id);
+      if (MERGEABLE_OVERLAYS.has(instance.name)) {
+        syncMergedOverlay(chart, instance.name, next);
       } else {
-        // Non-mergeable overlay (BOLL, AVWAP, or AVP)
-        chart.removeIndicator('candle_pane', getIndicatorEngineName(instance));
+        chart.removeIndicator(getIndicatorPane(instance), getIndicatorEngineName(instance));
       }
-      if (RANGE_INDICATORS.has(instance.name)) {
+      if (isAnchoredIndicator(instance.name)) {
         chart.removeOverlay({ id: getRangeOverlayId(instance) });
       }
 
-      setInstances(newInstances);
-      if (editingInstanceId === id) setEditingInstanceId(null);
+      commit(next);
+      setEditingInstanceId(current => (current === id ? null : current));
     },
-    [chartRef, instances, editingInstanceId, syncOverlay],
+    [chartRef, commit, syncMergedOverlay],
   );
 
-  /** Update properties of an indicator instance */
+  /** Update calculation parameters or colors of an indicator instance */
   const updateInstance = useCallback(
-    (id: string, changes: Partial<Pick<IndicatorInstance, 'calcParams' | 'color' | 'opacity'>>) => {
+    (id: string, changes: StyleChanges) => {
       const chart = chartRef.current;
       if (!chart) return;
 
-      const newInstances = instances.map(inst => {
-        if (inst.id !== id) return inst;
-        return { ...inst, ...changes };
-      });
-
-      setInstances(newInstances);
-
-      const updated = newInstances.find(i => i.id === id);
+      const next = instancesRef.current.map(inst => (inst.id === id ? { ...inst, ...changes } : inst));
+      commit(next);
+      const updated = next.find(i => i.id === id);
       if (!updated) return;
 
+      const colorChanged = changes.color !== undefined || changes.opacity !== undefined;
       if (MERGEABLE_OVERLAYS.has(updated.name)) {
-        syncOverlay(chart, updated.name, newInstances);
-      } else if (isOscillatorIndicator(updated.name)) {
-        if (changes.calcParams) {
-          chart.overrideIndicator(
-            { name: updated.name, calcParams: updated.calcParams },
-            updated.paneId,
-          );
-        }
-        if (changes.color !== undefined || changes.opacity !== undefined) {
-          const rgba = hexToRgba(updated.color, updated.opacity);
-          chart.overrideIndicator(
-            { name: updated.name, styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
-            updated.paneId,
-          );
-        }
+        syncMergedOverlay(chart, updated.name, next);
       } else {
-        // Non-mergeable overlay
+        const engineName = getIndicatorEngineName(updated);
+        const pane = getIndicatorPane(updated);
         if (changes.calcParams) {
-          chart.overrideIndicator(
-            { name: getIndicatorEngineName(updated), calcParams: updated.calcParams },
-            'candle_pane',
-          );
+          chart.overrideIndicator({ name: engineName, calcParams: updated.calcParams }, pane);
         }
-        if (changes.color !== undefined || changes.opacity !== undefined) {
-          const rgba = hexToRgba(updated.color, updated.opacity);
-          chart.overrideIndicator(
-            { name: getIndicatorEngineName(updated), styles: { lines: [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: rgba }] } },
-            'candle_pane',
-          );
+        if (colorChanged) {
+          chart.overrideIndicator({ name: engineName, styles: { lines: lineStyles(updated.color, updated.opacity) } }, pane);
         }
       }
-      if (RANGE_INDICATORS.has(updated.name) && (changes.color !== undefined || changes.opacity !== undefined)) {
+      if (isAnchoredIndicator(updated.name) && colorChanged) {
         chart.overrideOverlay({
           id: getRangeOverlayId(updated),
-          extendData: {
-            label: updated.name === 'AVWAP' ? 'Anchored VWAP range' : 'Anchored Volume Profile range',
-            color: updated.color,
-          },
+          extendData: { label: getAnchoredRangeLabel(updated.name), color: updated.color },
         });
       }
     },
-    [chartRef, instances, syncOverlay],
+    [chartRef, commit, syncMergedOverlay],
   );
 
   /** Toggle visibility of an indicator instance */
@@ -525,36 +381,23 @@ export function useIndicators(
     (id: string) => {
       const chart = chartRef.current;
       if (!chart) return;
-
-      const instance = instances.find(i => i.id === id);
+      const instance = instancesRef.current.find(i => i.id === id);
       if (!instance) return;
 
-      const nowVisible = !instance.visible;
-      const newInstances = instances.map(i =>
-        i.id === id ? { ...i, visible: nowVisible } : i,
-      );
-
-      setInstances(newInstances);
+      const visible = !instance.visible;
+      const next = instancesRef.current.map(i => (i.id === id ? { ...i, visible } : i));
+      commit(next);
 
       if (MERGEABLE_OVERLAYS.has(instance.name)) {
-        syncOverlay(chart, instance.name, newInstances);
-      } else if (isOscillatorIndicator(instance.name)) {
-        chart.overrideIndicator(
-          { name: instance.name, visible: nowVisible },
-          instance.paneId,
-        );
+        syncMergedOverlay(chart, instance.name, next);
       } else {
-        // Non-mergeable overlay — toggle via visible flag
-        chart.overrideIndicator(
-          { name: getIndicatorEngineName(instance), visible: nowVisible },
-          'candle_pane',
-        );
+        chart.overrideIndicator({ name: getIndicatorEngineName(instance), visible }, getIndicatorPane(instance));
       }
-      if (RANGE_INDICATORS.has(instance.name)) {
-        chart.overrideOverlay({ id: getRangeOverlayId(instance), visible: nowVisible });
+      if (isAnchoredIndicator(instance.name)) {
+        chart.overrideOverlay({ id: getRangeOverlayId(instance), visible });
       }
     },
-    [chartRef, instances, syncOverlay],
+    [chartRef, commit, syncMergedOverlay],
   );
 
   const editingInstance = instances.find(i => i.id === editingInstanceId) ?? null;

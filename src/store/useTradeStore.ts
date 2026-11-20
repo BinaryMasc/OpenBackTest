@@ -1,34 +1,33 @@
 import { create } from 'zustand';
 import { useBacktestStore } from './useBacktestStore';
 import { useChartStateStore } from './useChartStateStore';
+import {
+  applyFill,
+  closeAll,
+  triggeredExit,
+  unrealizedPnL,
+  type OrderSide,
+  type Position,
+  type PositionType,
+  type Trade,
+} from '../lib/trading/engine';
 
-export type PositionType = 'long' | 'short' | 'flat';
-export interface Trade {
-  id: string;
-  type: 'buy' | 'sell';
-  price: number;
-  time: number; // unix timestamp in seconds
-  quantity: number;
-  fee: number;
-  realizedPnL: number;
-  positionSize: number;
-  entryPrice: number | null;
-  balance: number;
+function currentSymbol(): string {
+  return useBacktestStore.getState().symbol;
 }
 
-export interface Position {
-  id: string;
-  type: 'long' | 'short';
-  entryPrice: number;
-  exitPrice: number;
-  quantity: number; // Max size reached or total size? Usually total size handled.
-  pnl: number;
-  openTime: number;
-  closeTime: number;
-  trades: Trade[];
+function currentTickTime(): number {
+  return useBacktestStore.getState().getCurrentTickTime() || Date.now() / 1000;
 }
 
-interface TradeState {
+/** An open position is locked to the symbol it was opened on. */
+function isCurrentSymbol(positionSymbol: string | null): boolean {
+  return positionSymbol === null || positionSymbol === currentSymbol();
+}
+
+export type { PositionType, Trade, Position } from '../lib/trading/engine';
+
+export interface TradeState {
   balance: number;
   realizedPnL: number;
   unrealizedPnL: number;
@@ -78,652 +77,161 @@ interface TradeState {
   importState: (state: Partial<TradeState>) => void;
 }
 
-export const useTradeStore = create<TradeState>((set, get) => ({
-  balance: 10000,
-  realizedPnL: 0,
-  unrealizedPnL: 0,
-  position: 'flat',
-  positionSymbol: null,
-  entryPrice: null,
-  activePositionSize: 0,
-  orderSize: 1,
-  takeProfit: null,
-  stopLoss: null,
+export const useTradeStore = create<TradeState>((set, get) => {
+  const submitOrder = (side: OrderSide, price: number) => {
+    const state = get();
+    if (state.isBlown) return;
+    if (state.position !== 'flat' && !isCurrentSymbol(state.positionSymbol)) return;
 
-  leverage: 150,
-  initialBalance: 10000,
-  marginBlowoutPercent: 5,
-  contractSize: 1,
-  feePercent: 0.02,
+    const quantity = state.orderSize;
+    const isAdding = state.position === (side === 'buy' ? 'long' : 'short');
+    const resultingSize = isAdding ? state.activePositionSize + quantity : quantity;
+    const equity = state.balance + state.unrealizedPnL;
+    if (resultingSize * state.contractSize * price > equity * state.leverage) return;
 
-  isBlown: false,
-  hasTraded: false,
-  tradeHistory: [],
-  showTradeHistory: false,
-
-  isFinished: false,
-  showStatsModal: false,
-  finishedPositions: [],
-  currentPositionTrades: [],
-
-  setShowTradeHistory: (show: boolean) => set({ showTradeHistory: show }),
-  setShowStatsModal: (show: boolean) => set({ showStatsModal: show }),
-  clearTradeHistory: () => {
-    set({ tradeHistory: [] });
-    const symbol = useBacktestStore.getState().symbol;
-    if (symbol) useChartStateStore.getState().clearTrades(symbol, 'simulation');
-  },
-
-  buy: (price: number) => {
-    const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent, positionSymbol } = get();
-    if (isBlown) return;
-
-    const currentSymbol = useBacktestStore.getState().symbol;
-    if (position !== 'flat' && positionSymbol !== null && positionSymbol !== currentSymbol) return;
-
-    const quantity = orderSize;
-    const equity = balance + unrealizedPnL;
-
-    // Check Leverage
-    const newTotalSize = position === 'long' ? activePositionSize + quantity : quantity;
-    const requiredPositionValue = newTotalSize * contractSize * price;
-    if (requiredPositionValue > equity * leverage) return; // Prevent trade exceeding leverage
-
-    const fee = quantity * price * contractSize * (feePercent / 100);
-
-    if (position === 'long' && entryPrice !== null) {
-      // Averaging UP/DOWN
-      const newSize = activePositionSize + quantity;
-      const newAvgPrice = (activePositionSize * entryPrice + quantity * price) / newSize;
-      set((state) => ({
-        activePositionSize: newSize,
-        entryPrice: newAvgPrice,
-        balance: state.balance - fee,
-        realizedPnL: state.realizedPnL - fee,
-        hasTraded: true
-      }));
-    } else if (position === 'short' && entryPrice !== null) {
-      // Netting
-      if (quantity < activePositionSize) {
-        // Partial close
-        const profit = (entryPrice - price) * quantity * contractSize;
-        set((state) => ({
-          balance: state.balance + profit - fee,
-          realizedPnL: state.realizedPnL + profit - fee,
-          activePositionSize: state.activePositionSize - quantity,
-          hasTraded: true
-        }));
-      } else if (quantity === activePositionSize) {
-        // Full close
-        const profit = (entryPrice - price) * quantity * contractSize;
-        set((state) => {
-          const backtestTime = useBacktestStore.getState().getCurrentTickTime();
-          const trade: Trade = {
-            id: Math.random().toString(36).substring(2, 9),
-            type: 'buy',
-            price,
-            time: backtestTime || (Date.now() / 1000),
-            quantity,
-            fee,
-            realizedPnL: 0,
-            positionSize: 0,
-            entryPrice: null,
-            balance: 0
-          };
-          const finalTrade: Trade = {
-            ...trade,
-            realizedPnL: profit - fee,
-            positionSize: 0,
-            entryPrice: null,
-            balance: state.balance + profit - fee
-          };
-          const newTrades = [...state.currentPositionTrades, finalTrade];
-          const totalEntryQty = newTrades.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.quantity, 0);
-          const avgEntryPrice = newTrades.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalEntryQty;
-          const totalExitQty = newTrades.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.quantity, 0);
-          const avgExitPrice = newTrades.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalExitQty;
-
-          const finishedPos: Position = {
-            id: Math.random().toString(36).substring(2, 9),
-            type: 'short',
-            entryPrice: avgEntryPrice,
-            exitPrice: avgExitPrice,
-            quantity: totalEntryQty,
-            pnl: newTrades.reduce((acc, t) => acc + t.realizedPnL, 0),
-            openTime: newTrades[0].time,
-            closeTime: trade.time,
-            trades: newTrades
-          };
-
-          return {
-            balance: state.balance + profit - fee,
-            realizedPnL: state.realizedPnL + profit - fee,
-            position: 'flat',
-            positionSymbol: null,
-            activePositionSize: 0,
-            entryPrice: null,
-            unrealizedPnL: 0,
-            takeProfit: null,
-            stopLoss: null,
-            hasTraded: true,
-            tradeHistory: [...state.tradeHistory, finalTrade],
-            currentPositionTrades: [],
-            finishedPositions: [...state.finishedPositions, finishedPos]
-          };
-        });
-        return; // Skip default
-      } else {
-        // Flip position
-        const profit = (entryPrice - price) * activePositionSize * contractSize;
-        const remainder = quantity - activePositionSize;
-
-        // Record finished short position
-        const backtestTime = useBacktestStore.getState().getCurrentTickTime();
-        const closeTrade: Trade = {
-          id: Math.random().toString(36).substring(2, 9),
-          type: 'buy',
-          price,
-          time: backtestTime || (Date.now() / 1000),
-          quantity: activePositionSize,
-          fee: fee * (activePositionSize / quantity),
-          realizedPnL: 0,
-          positionSize: 0,
-          entryPrice: null,
-          balance: 0
-        };
-        const openTrade: Trade = {
-          id: Math.random().toString(36).substring(2, 9),
-          type: 'buy',
-          price,
-          time: backtestTime || (Date.now() / 1000),
-          quantity: remainder,
-          fee: fee * (remainder / quantity),
-          realizedPnL: 0,
-          positionSize: 0,
-          entryPrice: null,
-          balance: 0
-        };
-
-        set((state) => {
-          const finalCloseTrade: Trade = { ...closeTrade, realizedPnL: profit - (fee * (activePositionSize / quantity)), positionSize: 0, entryPrice: null, balance: state.balance + profit - (fee * (activePositionSize / quantity)) };
-          const finalOpenTrade: Trade = { ...openTrade, realizedPnL: -(fee * (remainder / quantity)), positionSize: remainder, entryPrice: price, balance: state.balance + profit - fee };
-
-          const newTradesForShort = [...state.currentPositionTrades, finalCloseTrade];
-          const totalEntryQty = newTradesForShort.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.quantity, 0);
-          const avgEntryPrice = newTradesForShort.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalEntryQty;
-          const totalExitQty = newTradesForShort.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.quantity, 0);
-          const avgExitPrice = newTradesForShort.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalExitQty;
-
-          const finishedPos: Position = {
-            id: Math.random().toString(36).substring(2, 9),
-            type: 'short',
-            entryPrice: avgEntryPrice,
-            exitPrice: avgExitPrice,
-            quantity: totalEntryQty,
-            pnl: newTradesForShort.reduce((acc, t) => acc + t.realizedPnL, 0),
-            openTime: newTradesForShort[0].time,
-            closeTime: closeTrade.time,
-            trades: newTradesForShort
-          };
-
-          return {
-            balance: state.balance + profit - fee,
-            realizedPnL: state.realizedPnL + profit - fee,
-            position: 'long',
-            positionSymbol: currentSymbol,
-            activePositionSize: remainder,
-            entryPrice: price,
-            unrealizedPnL: 0,
-            takeProfit: null,
-            stopLoss: null,
-            hasTraded: true,
-            tradeHistory: [...state.tradeHistory, finalCloseTrade, finalOpenTrade],
-            currentPositionTrades: [finalOpenTrade],
-            finishedPositions: [...state.finishedPositions, finishedPos]
-          };
-        });
-        return;
-      }
-    } else {
-      // Open new Long
-      set((state) => ({
-        position: 'long',
-        positionSymbol: currentSymbol,
-        entryPrice: price,
-        activePositionSize: quantity,
-        unrealizedPnL: 0,
-        balance: state.balance - fee,
-        realizedPnL: state.realizedPnL - fee,
-        hasTraded: true
-      }));
-    }
-
-    // Record trade
-    const backtestTime = useBacktestStore.getState().getCurrentTickTime();
-    const trade: Trade = {
-      id: Math.random().toString(36).substring(2, 9),
-      type: 'buy',
+    set(applyFill(state, {
+      side,
       price,
-      time: backtestTime || (Date.now() / 1000),
       quantity,
-      fee,
-      realizedPnL: -fee,
-      positionSize: activePositionSize,
-      entryPrice: entryPrice,
-      balance: balance
-    };
+      time: currentTickTime(),
+      symbol: currentSymbol(),
+      contractSize: state.contractSize,
+      feePercent: state.feePercent,
+    }));
+  };
 
-    set((state) => {
-      const currentTrade: Trade = {
-        ...trade,
-        realizedPnL: position === 'flat' ? -fee : (position === 'long' ? -fee : (quantity <= activePositionSize ? (entryPrice! - price) * quantity * contractSize - fee : (entryPrice! - price) * activePositionSize * contractSize - fee)),
-        positionSize: get().activePositionSize,
-        entryPrice: get().entryPrice,
-        balance: get().balance
-      };
-      return {
-        tradeHistory: [...state.tradeHistory, currentTrade],
-        currentPositionTrades: [...state.currentPositionTrades, currentTrade]
-      };
-    });
-  },
+  return {
+    balance: 10000,
+    realizedPnL: 0,
+    unrealizedPnL: 0,
+    position: 'flat',
+    positionSymbol: null,
+    entryPrice: null,
+    activePositionSize: 0,
+    orderSize: 1,
+    takeProfit: null,
+    stopLoss: null,
 
-  sell: (price: number) => {
-    const { position, activePositionSize, entryPrice, orderSize, contractSize, leverage, balance, unrealizedPnL, isBlown, feePercent, positionSymbol } = get();
-    if (isBlown) return;
+    leverage: 150,
+    initialBalance: 10000,
+    marginBlowoutPercent: 5,
+    contractSize: 1,
+    feePercent: 0.02,
 
-    const currentSymbol = useBacktestStore.getState().symbol;
-    if (position !== 'flat' && positionSymbol !== null && positionSymbol !== currentSymbol) return;
+    isBlown: false,
+    hasTraded: false,
+    tradeHistory: [],
+    showTradeHistory: false,
 
-    const quantity = orderSize;
-    const equity = balance + unrealizedPnL;
+    isFinished: false,
+    showStatsModal: false,
+    finishedPositions: [],
+    currentPositionTrades: [],
 
-    // Check Leverage
-    const newTotalSize = position === 'short' ? activePositionSize + quantity : quantity;
-    const requiredPositionValue = newTotalSize * contractSize * price;
-    if (requiredPositionValue > equity * leverage) return; // Prevent trade exceeding leverage
+    setShowTradeHistory: (show: boolean) => set({ showTradeHistory: show }),
+    setShowStatsModal: (show: boolean) => set({ showStatsModal: show }),
+    clearTradeHistory: () => {
+      set({ tradeHistory: [] });
+      const symbol = useBacktestStore.getState().symbol;
+      if (symbol) useChartStateStore.getState().clearTrades(symbol, 'simulation');
+    },
 
-    const fee = quantity * price * contractSize * (feePercent / 100);
+    buy: (price: number) => submitOrder('buy', price),
+    sell: (price: number) => submitOrder('sell', price),
 
-    if (position === 'short' && entryPrice !== null) {
-      // Averaging UP/DOWN
-      const newSize = activePositionSize + quantity;
-      const newAvgPrice = (activePositionSize * entryPrice + quantity * price) / newSize;
-      set((state) => ({
-        activePositionSize: newSize,
-        entryPrice: newAvgPrice,
-        balance: state.balance - fee,
-        realizedPnL: state.realizedPnL - fee,
-        hasTraded: true
-      }));
-    } else if (position === 'long' && entryPrice !== null) {
-      // Netting
-      if (quantity < activePositionSize) {
-        // Partial close
-        const profit = (price - entryPrice) * quantity * contractSize;
-        set((state) => ({
-          balance: state.balance + profit - fee,
-          realizedPnL: state.realizedPnL + profit - fee,
-          activePositionSize: state.activePositionSize - quantity,
-          hasTraded: true
-        }));
-      } else if (quantity === activePositionSize) {
-        // Full close
-        const profit = (price - entryPrice) * quantity * contractSize;
-        set((state) => {
-          const backtestTime = useBacktestStore.getState().getCurrentTickTime();
-          const trade: Trade = {
-            id: Math.random().toString(36).substring(2, 9),
-            type: 'sell',
-            price,
-            time: backtestTime || (Date.now() / 1000),
-            quantity,
-            fee,
-            realizedPnL: 0,
-            positionSize: 0,
-            entryPrice: null,
-            balance: 0
-          };
-          const finalTrade: Trade = {
-            ...trade,
-            realizedPnL: profit - fee,
-            positionSize: 0,
-            entryPrice: null,
-            balance: state.balance + profit - fee
-          };
-          const newTrades = [...state.currentPositionTrades, finalTrade];
-          const totalEntryQty = newTrades.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.quantity, 0);
-          const avgEntryPrice = newTrades.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalEntryQty;
-          const totalExitQty = newTrades.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.quantity, 0);
-          const avgExitPrice = newTrades.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalExitQty;
-
-          const finishedPos: Position = {
-            id: Math.random().toString(36).substring(2, 9),
-            type: 'long',
-            entryPrice: avgEntryPrice,
-            exitPrice: avgExitPrice,
-            quantity: totalEntryQty,
-            pnl: newTrades.reduce((acc, t) => acc + t.realizedPnL, 0),
-            openTime: newTrades[0].time,
-            closeTime: trade.time,
-            trades: newTrades
-          };
-
-          return {
-            balance: state.balance + profit - fee,
-            realizedPnL: state.realizedPnL + profit - fee,
-            position: 'flat',
-            positionSymbol: null,
-            activePositionSize: 0,
-            entryPrice: null,
-            unrealizedPnL: 0,
-            takeProfit: null,
-            stopLoss: null,
-            hasTraded: true,
-            tradeHistory: [...state.tradeHistory, finalTrade],
-            currentPositionTrades: [],
-            finishedPositions: [...state.finishedPositions, finishedPos]
-          };
-        });
-        return; // Skip default
-      } else {
-        // Flip position
-        const profit = (price - entryPrice) * activePositionSize * contractSize;
-        const remainder = quantity - activePositionSize;
-
-        // Record finished long position
-        const backtestTime = useBacktestStore.getState().getCurrentTickTime();
-        const closeTrade: Trade = {
-          id: Math.random().toString(36).substring(2, 9),
-          type: 'sell',
-          price,
-          time: backtestTime || (Date.now() / 1000),
-          quantity: activePositionSize,
-          fee: fee * (activePositionSize / quantity),
-          realizedPnL: 0,
-          positionSize: 0,
-          entryPrice: null,
-          balance: 0
-        };
-        const openTrade: Trade = {
-          id: Math.random().toString(36).substring(2, 9),
-          type: 'sell',
-          price,
-          time: backtestTime || (Date.now() / 1000),
-          quantity: remainder,
-          fee: fee * (remainder / quantity),
-          realizedPnL: 0,
-          positionSize: 0,
-          entryPrice: null,
-          balance: 0
-        };
-
-        set((state) => {
-          const finalCloseTrade: Trade = { ...closeTrade, realizedPnL: profit - (fee * (activePositionSize / quantity)), positionSize: 0, entryPrice: null, balance: state.balance + profit - (fee * (activePositionSize / quantity)) };
-          const finalOpenTrade: Trade = { ...openTrade, realizedPnL: -(fee * (remainder / quantity)), positionSize: remainder, entryPrice: price, balance: state.balance + profit - fee };
-
-          const newTradesForLong = [...state.currentPositionTrades, finalCloseTrade];
-          const totalEntryQty = newTradesForLong.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.quantity, 0);
-          const avgEntryPrice = newTradesForLong.filter(t => t.type === 'buy').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalEntryQty;
-          const totalExitQty = newTradesForLong.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.quantity, 0);
-          const avgExitPrice = newTradesForLong.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.price * t.quantity, 0) / totalExitQty;
-
-          const finishedPos: Position = {
-            id: Math.random().toString(36).substring(2, 9),
-            type: 'long',
-            entryPrice: avgEntryPrice,
-            exitPrice: avgExitPrice,
-            quantity: totalEntryQty,
-            pnl: newTradesForLong.reduce((acc, t) => acc + t.realizedPnL, 0),
-            openTime: newTradesForLong[0].time,
-            closeTime: closeTrade.time,
-            trades: newTradesForLong
-          };
-
-          return {
-            balance: state.balance + profit - fee,
-            realizedPnL: state.realizedPnL + profit - fee,
-            position: 'short',
-            positionSymbol: currentSymbol,
-            activePositionSize: remainder,
-            entryPrice: price,
-            unrealizedPnL: 0,
-            takeProfit: null,
-            stopLoss: null,
-            hasTraded: true,
-            tradeHistory: [...state.tradeHistory, finalCloseTrade, finalOpenTrade],
-            currentPositionTrades: [finalOpenTrade],
-            finishedPositions: [...state.finishedPositions, finishedPos]
-          };
-        });
-        return;
-      }
-    } else {
-      // Open new Short
-      set((state) => ({
-        position: 'short',
-        positionSymbol: currentSymbol,
-        entryPrice: price,
-        activePositionSize: quantity,
-        unrealizedPnL: 0,
-        balance: state.balance - fee,
-        realizedPnL: state.realizedPnL - fee,
-        hasTraded: true
-      }));
-    }
-
-    // Record trade
-    const backtestTime = useBacktestStore.getState().getCurrentTickTime();
-    const trade: Trade = {
-      id: Math.random().toString(36).substring(2, 9),
-      type: 'sell',
-      price,
-      time: backtestTime || (Date.now() / 1000),
-      quantity,
-      fee,
-      realizedPnL: -fee,
-      positionSize: activePositionSize,
-      entryPrice: entryPrice,
-      balance: balance
-    };
-
-    set((state) => {
-      const currentTrade: Trade = {
-        ...trade,
-        realizedPnL: position === 'flat' ? -fee : (position === 'short' ? -fee : (quantity <= activePositionSize ? (price - entryPrice!) * quantity * contractSize - fee : (price - entryPrice!) * activePositionSize * contractSize - fee)),
-        positionSize: get().activePositionSize,
-        entryPrice: get().entryPrice,
-        balance: get().balance
-      };
-      return {
-        tradeHistory: [...state.tradeHistory, currentTrade],
-        currentPositionTrades: [...state.currentPositionTrades, currentTrade]
-      };
-    });
-  },
-
-  flat: (price: number) => {
-    const { position, activePositionSize, entryPrice, contractSize, feePercent, positionSymbol } = get();
-    if (position === 'flat') return;
-
-    const currentSymbol = useBacktestStore.getState().symbol;
-    if (positionSymbol !== null && positionSymbol !== currentSymbol) return;
-    if (entryPrice === null) return;
-
-    let profit = 0;
-    if (position === 'long') {
-      profit = (price - entryPrice) * activePositionSize * contractSize;
-    } else if (position === 'short') {
-      profit = (entryPrice - price) * activePositionSize * contractSize;
-    }
-
-    const fee = activePositionSize * price * contractSize * (feePercent / 100);
-
-    set((state) => {
-      const posType = state.position as 'long' | 'short';
-
-      const backtestTime = useBacktestStore.getState().getCurrentTickTime();
-      const finalTrade: Trade = {
-        id: Math.random().toString(36).substring(2, 9),
-        type: posType === 'long' ? 'sell' : 'buy',
+    flat: (price: number) => {
+      const state = get();
+      if (!isCurrentSymbol(state.positionSymbol)) return;
+      const update = closeAll(state, {
         price,
-        time: backtestTime || (Date.now() / 1000),
-        quantity: activePositionSize,
-        fee,
-        realizedPnL: profit - fee,
-        positionSize: 0,
-        entryPrice: null,
-        balance: state.balance + profit - fee
-      };
+        time: currentTickTime(),
+        symbol: currentSymbol(),
+        contractSize: state.contractSize,
+        feePercent: state.feePercent,
+      });
+      if (update) set(update);
+    },
 
-      const newTrades = [...state.currentPositionTrades, finalTrade];
+    updateUnrealizedPnL: (currentPrice: number) => {
+      const state = get();
+      if (state.position === 'flat' || state.entryPrice === null || state.isBlown) {
+        set({ unrealizedPnL: 0 });
+        return;
+      }
+      if (!isCurrentSymbol(state.positionSymbol)) return;
 
-      // Calculate finished position
-      const totalEntryQty = newTrades.filter(t => t.type === (posType === 'long' ? 'buy' : 'sell')).reduce((acc, t) => acc + t.quantity, 0);
-      const avgEntryPrice = newTrades.filter(t => t.type === (posType === 'long' ? 'buy' : 'sell')).reduce((acc, t) => acc + t.price * t.quantity, 0) / totalEntryQty;
-      const totalExitQty = newTrades.filter(t => t.type === (posType === 'long' ? 'sell' : 'buy')).reduce((acc, t) => acc + t.quantity, 0);
-      const avgExitPrice = newTrades.filter(t => t.type === (posType === 'long' ? 'sell' : 'buy')).reduce((acc, t) => acc + t.price * t.quantity, 0) / totalExitQty;
+      const exitPrice = triggeredExit(state.position, currentPrice, state.takeProfit, state.stopLoss);
+      if (exitPrice !== null) {
+        state.flat(exitPrice);
+        return;
+      }
 
-      const finishedPos: Position = {
-        id: Math.random().toString(36).substring(2, 9),
-        type: posType,
-        entryPrice: avgEntryPrice,
-        exitPrice: avgExitPrice,
-        quantity: totalEntryQty,
-        pnl: newTrades.reduce((acc, t) => acc + t.realizedPnL, 0),
-        openTime: newTrades[0].time,
-        closeTime: finalTrade.time,
-        trades: newTrades
-      };
+      const upnl = unrealizedPnL(state, currentPrice, state.contractSize, state.feePercent);
+      if (state.balance + upnl <= 0) {
+        // Account blown: liquidate at the current price.
+        state.flat(currentPrice);
+        set({ isBlown: true });
+        return;
+      }
 
-      return {
-        balance: state.balance + profit - fee,
-        realizedPnL: state.realizedPnL + profit - fee,
+      set({ unrealizedPnL: upnl });
+    },
+
+    setOrderSize: (size: number) => set({ orderSize: size }),
+    setTakeProfit: (price: number | null) => set({ takeProfit: price }),
+    setStopLoss: (price: number | null) => set({ stopLoss: price }),
+
+    setLeverage: (val: number) => set({ leverage: val }),
+    setInitialBalance: (val: number) => set({ initialBalance: val }),
+    setMarginBlowoutPercent: (val: number) => set({ marginBlowoutPercent: val }),
+    setContractSize: (val: number) => set({ contractSize: val }),
+    setFeePercent: (val: number) => set({ feePercent: val }),
+
+    reset: () => {
+      set(state => ({
+        balance: state.initialBalance,
+        realizedPnL: 0,
+        unrealizedPnL: 0,
         position: 'flat',
         positionSymbol: null,
         entryPrice: null,
         activePositionSize: 0,
-        unrealizedPnL: 0,
+        orderSize: 1,
         takeProfit: null,
         stopLoss: null,
-        tradeHistory: [...state.tradeHistory, finalTrade],
-        currentPositionTrades: [],
-        finishedPositions: [...state.finishedPositions, finishedPos]
-      };
-    });
-  },
+        isBlown: false,
+        hasTraded: false,
+        tradeHistory: [],
+        isFinished: false,
+        showStatsModal: false,
+        finishedPositions: [],
+        currentPositionTrades: []
+      }));
+      const symbol = useBacktestStore.getState().symbol;
+      if (symbol) useChartStateStore.getState().clearTrades(symbol, 'simulation');
+    },
 
-  updateUnrealizedPnL: (currentPrice: number) => {
-    const { position, entryPrice, activePositionSize, takeProfit, stopLoss, flat, contractSize, balance, feePercent, isBlown, positionSymbol } = get();
-    if (position === 'flat' || entryPrice === null || isBlown) {
-      set({ unrealizedPnL: 0 });
-      return;
-    }
+    finishSimulation: () => {
+      const { position, flat, isFinished } = get();
+      if (isFinished) return;
 
-    const currentSymbol = useBacktestStore.getState().symbol;
-    if (positionSymbol !== null && positionSymbol !== currentSymbol) {
-      return;
-    }
-
-    // Check TP / SL triggers
-    if (position === 'long') {
-      if (takeProfit !== null && currentPrice >= takeProfit) {
-        flat(takeProfit);
-        return;
+      // Close any open position
+      if (position !== 'flat') {
+        const { rawData, currentIndex } = useBacktestStore.getState();
+        const currentPrice = rawData[currentIndex]?.close || 0;
+        if (currentPrice > 0) {
+          flat(currentPrice);
+        }
       }
-      if (stopLoss !== null && currentPrice <= stopLoss) {
-        flat(stopLoss);
-        return;
+
+      // Stop playback
+      if (useBacktestStore.getState().isPlaying) {
+        useBacktestStore.getState().togglePlayback();
       }
-    } else if (position === 'short') {
-      if (takeProfit !== null && currentPrice <= takeProfit) {
-        flat(takeProfit);
-        return;
-      }
-      if (stopLoss !== null && currentPrice >= stopLoss) {
-        flat(stopLoss);
-        return;
-      }
-    }
 
-    let upnl = 0;
-    if (position === 'long') {
-      upnl = (currentPrice - entryPrice) * activePositionSize * contractSize;
-    } else if (position === 'short') {
-      upnl = (entryPrice - currentPrice) * activePositionSize * contractSize;
-    }
+      set({ isFinished: true, showStatsModal: true });
+    },
 
-    const estimatedExitFee = activePositionSize * currentPrice * contractSize * (feePercent / 100);
-    upnl -= estimatedExitFee;
-
-    const equity = balance + upnl;
-    // const positionValue = activePositionSize * currentPrice * contractSize;
-    // const marginRequired = positionValue * (marginBlowoutPercent / 100);
-
-    if (equity <= 0) {
-      // Account Blown (Equity <= 0)
-      flat(currentPrice); // Close at current price
-      set({ isBlown: true });
-      return;
-    }
-
-    set({ unrealizedPnL: upnl });
-  },
-
-  setOrderSize: (size: number) => set({ orderSize: size }),
-  setTakeProfit: (price: number | null) => set({ takeProfit: price }),
-  setStopLoss: (price: number | null) => set({ stopLoss: price }),
-
-  setLeverage: (val: number) => set({ leverage: val }),
-  setInitialBalance: (val: number) => set({ initialBalance: val }),
-  setMarginBlowoutPercent: (val: number) => set({ marginBlowoutPercent: val }),
-  setContractSize: (val: number) => set({ contractSize: val }),
-  setFeePercent: (val: number) => set({ feePercent: val }),
-
-  reset: () => {
-    set(state => ({
-      balance: state.initialBalance,
-      realizedPnL: 0,
-      unrealizedPnL: 0,
-      position: 'flat',
-      positionSymbol: null,
-      entryPrice: null,
-      activePositionSize: 0,
-      orderSize: 1,
-      takeProfit: null,
-      stopLoss: null,
-      isBlown: false,
-      hasTraded: false,
-      tradeHistory: [],
-      isFinished: false,
-      showStatsModal: false,
-      finishedPositions: [],
-      currentPositionTrades: []
-    }));
-    const symbol = useBacktestStore.getState().symbol;
-    if (symbol) useChartStateStore.getState().clearTrades(symbol, 'simulation');
-  },
-
-  finishSimulation: () => {
-    const { position, flat, isFinished } = get();
-    if (isFinished) return;
-
-    // Close any open position
-    if (position !== 'flat') {
-      const { rawData, currentIndex } = useBacktestStore.getState();
-      const currentPrice = rawData[currentIndex]?.close || 0;
-      if (currentPrice > 0) {
-        flat(currentPrice);
-      }
-    }
-
-    // Stop playback
-    if (useBacktestStore.getState().isPlaying) {
-      useBacktestStore.getState().togglePlayback();
-    }
-
-    set({ isFinished: true, showStatsModal: true });
-  },
-
-  importState: (state: Partial<TradeState>) => set((prev) => ({ ...prev, ...state }))
-}));
+    importState: (state: Partial<TradeState>) => set((prev) => ({ ...prev, ...state }))
+  };
+});

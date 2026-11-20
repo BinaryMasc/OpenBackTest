@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import type { Candle, Timeframe, ChartConfig } from '../types';
-import { MAX_SYNTHETIC_CANDLE_GAP_SECONDS } from '../utils/candleGaps';
+import { MAX_SYNTHETIC_CANDLE_GAP_SECONDS, flatCandlesUntil } from '../utils/candleGaps';
 import { useChartStateStore } from './useChartStateStore';
 
 
-interface BacktestState {
+export interface BacktestState {
   rawData: Candle[];
   symbol: string;
   currentIndex: number;
@@ -165,17 +165,7 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
         const intervalSeconds = 60;
         const gapSeconds = kline.time - lastCandle.time;
         if (gapSeconds > intervalSeconds && gapSeconds <= MAX_SYNTHETIC_CANDLE_GAP_SECONDS) {
-          for (let time = lastCandle.time + intervalSeconds; time < kline.time; time += intervalSeconds) {
-            rawData.push({
-              time,
-              open: lastCandle.close,
-              high: lastCandle.close,
-              low: lastCandle.close,
-              close: lastCandle.close,
-              volume: 0,
-              symbol: lastCandle.symbol || kline.symbol,
-            });
-          }
+          rawData.push(...flatCandlesUntil({ ...lastCandle, symbol: lastCandle.symbol || kline.symbol }, kline.time, intervalSeconds));
         }
         rawData.push(kline);
       } else if (rawData.length >= 2 && kline.time === rawData[rawData.length - 2].time) {

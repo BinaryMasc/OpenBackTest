@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import {
+  DEFAULT_DAY_SEPARATOR_SETTINGS,
+  type DaySeparatorSettings,
+} from '../lib/chart/indicators/daySeparators';
 
-interface ChartStyleState {
+interface CandleColors {
   upColor: string;
   downColor: string;
   upBorderColor: string;
@@ -9,14 +13,19 @@ interface ChartStyleState {
   upWickColor: string;
   downWickColor: string;
   backgroundColor: string;
+}
+
+interface ChartStyleState extends CandleColors {
+  daySeparator: DaySeparatorSettings;
   isEditorOpen: boolean;
 
-  setColors: (colors: Partial<Omit<ChartStyleState, 'isEditorOpen' | 'setColors' | 'setEditorOpen' | 'reset'>>) => void;
+  setColors: (colors: Partial<CandleColors>) => void;
+  setDaySeparator: (settings: Partial<DaySeparatorSettings>) => void;
   setEditorOpen: (open: boolean) => void;
   reset: () => void;
 }
 
-const DEFAULT_STYLE = {
+const DEFAULT_COLORS: CandleColors = {
   upColor: '#2DC08E',
   downColor: '#F92855',
   upBorderColor: '#2DC08E',
@@ -29,12 +38,14 @@ const DEFAULT_STYLE = {
 export const useChartStyleStore = create<ChartStyleState>()(
   persist(
     (set) => ({
-      ...DEFAULT_STYLE,
+      ...DEFAULT_COLORS,
+      daySeparator: DEFAULT_DAY_SEPARATOR_SETTINGS,
       isEditorOpen: false,
 
-      setColors: (colors) => set((state) => ({ ...state, ...colors })),
+      setColors: (colors) => set(colors),
+      setDaySeparator: (settings) => set(state => ({ daySeparator: { ...state.daySeparator, ...settings } })),
       setEditorOpen: (open) => set({ isEditorOpen: open }),
-      reset: () => set((state) => ({ ...state, ...DEFAULT_STYLE })),
+      reset: () => set({ ...DEFAULT_COLORS, daySeparator: DEFAULT_DAY_SEPARATOR_SETTINGS }),
     }),
     {
       name: 'chart-style-storage',
@@ -46,7 +57,17 @@ export const useChartStyleStore = create<ChartStyleState>()(
         upWickColor: state.upWickColor,
         downWickColor: state.downWickColor,
         backgroundColor: state.backgroundColor,
+        daySeparator: state.daySeparator,
       }),
+      // Settings saved before a field existed keep that field's default.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<ChartStyleState>;
+        return {
+          ...current,
+          ...saved,
+          daySeparator: { ...DEFAULT_DAY_SEPARATOR_SETTINGS, ...saved.daySeparator },
+        };
+      },
     }
   )
 );

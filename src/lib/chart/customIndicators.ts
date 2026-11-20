@@ -3,6 +3,7 @@ import { ANCHORED_VOLUME_PROFILE_DEFAULT_PARAMS, ANCHORED_VOLUME_PROFILE_INDICAT
 import { ANCHORED_VWAP_DEFAULT_PARAMS, ANCHORED_VWAP_INDICATOR } from './indicators/anchoredVWAP';
 import { ATR_DEFAULT_PARAMS, ATR_INDICATOR } from './indicators/atr';
 import { VPVR_DEFAULT_PARAMS, VPVR_INDICATOR } from './indicators/vpvr';
+import { DAY_SEPARATOR_INDICATOR } from './indicators/daySeparators';
 
 export const CUSTOM_INDICATORS_LIST = ['AVWAP', 'AVP', 'ATR', 'VPVR'] as const;
 export const CUSTOM_INDICATOR_PARAMS: Record<string, number[]> = {
@@ -33,4 +34,5 @@ export function registerCustomIndicators(): void {
   registerIndicator(ANCHORED_VWAP_INDICATOR);
   registerIndicator(ANCHORED_VOLUME_PROFILE_INDICATOR);
   registerIndicator(ATR_INDICATOR);
+  registerIndicator(DAY_SEPARATOR_INDICATOR);
 }

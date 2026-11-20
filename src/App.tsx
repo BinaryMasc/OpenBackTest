@@ -1,10 +1,10 @@
 import { Controls } from './components/Controls';
 import { ChartGrid } from './components/ChartGrid';
 import { StatsModal } from './components/StatsModal';
-//import { useBacktestStore } from './store/useBacktestStore';
+import { usePlaybackTimer } from './hooks/usePlaybackTimer';
 
 function App() {
-  //const symbol = useBacktestStore((state) => state.symbol);
+  usePlaybackTimer();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-dark-900 font-sans text-slate-300">

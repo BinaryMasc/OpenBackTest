@@ -1,11 +1,10 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import type { Overlay } from 'klinecharts';
 import { useBacktestStore } from '../../store/useBacktestStore';
-import { aggregateCandles } from '../../utils/aggregation';
 import { useChart } from '../../hooks/useChart';
 import { useDrawingTools } from '../../hooks/useDrawingTools';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
-import { useIndicators } from '../../hooks/useIndicators';
+import { getRangeOverlayId, useIndicators } from '../../hooks/useIndicators';
 import { DRAWING_GROUP_ID } from '../../lib/chart/constants';
 import { ChartContainer } from './ChartContainer';
 import { DrawingToolbar } from './DrawingToolbar';
@@ -14,6 +13,7 @@ import { IndicatorProperties } from './IndicatorProperties';
 import { IndicatorLegend } from './IndicatorLegend';
 import { OverlayEditor } from './OverlayEditor';
 import { useTradeOverlays } from '../../hooks/useTradeOverlays';
+import { useDaySeparators } from '../../hooks/useDaySeparators';
 import { SymbolLegend } from './SymbolLegend';
 import { ContextMenu } from './ContextMenu';
 import { useTradeStore } from '../../store/useTradeStore';
@@ -23,34 +23,27 @@ import { useContextMenu } from '../../hooks/useContextMenu';
 import { CandleStyleEditor } from './CandleStyleEditor';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
 import type { Timeframe } from '../../types';
-import { fillShortCandleGaps } from '../../utils/candleGaps';
+import { getVisibleSeries } from '../../utils/series';
 import type { ExecutionPosition } from '../../services/execution';
 import {
   getAnchoredIndicatorForRangeOverlay,
+  getOverlayTimestampRange,
   getRangeOverlayForAnchoredIndicator,
+  isAnchoredIndicator,
+  isAnchoredRangeOverlay,
+  patchOverlayExtendData,
+  type AnchoredIndicatorName,
 } from '../../lib/chart/overlays';
+import { sameSymbol } from '../../lib/symbols';
+import type { IndicatorInstance } from '../../types/indicatorTypes';
 
 interface TradingChartProps {
   id: string;
   timeframe: Timeframe;
 }
 
-function sameSymbol(left: string, right: string): boolean {
-  const normalizedLeft = left.trim().toUpperCase();
-  const normalizedRight = right.trim().toUpperCase();
-  return normalizedLeft === normalizedRight
-    || normalizedLeft.split('.')[0] === normalizedRight.split('.')[0];
-}
-
-function getOverlayTimestampRange(overlay: Overlay): [number, number] | null {
-  const first = overlay.points[0]?.timestamp;
-  const second = overlay.points[1]?.timestamp;
-  if (typeof first !== 'number' || !Number.isFinite(first) || typeof second !== 'number' || !Number.isFinite(second)) return null;
-  return [Math.min(first, second), Math.max(first, second)];
-}
-
-function isLinkedRangeOverlay(instance: { id: string; rangeOverlayId?: string }, overlayId: string): boolean {
-  return instance.rangeOverlayId === overlayId || `${instance.id}_range` === overlayId;
+function isLinkedRangeOverlay(instance: IndicatorInstance, overlayId: string): boolean {
+  return getRangeOverlayId(instance) === overlayId;
 }
 
 export function TradingChart({ id, timeframe }: TradingChartProps) {
@@ -73,16 +66,12 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
 
 
-  const aggregatedData = useMemo(() => {
-    if (rawData.length === 0 || currentIndex === -1) return [];
-    const visibleData = rawData.slice(0, currentIndex + 1);
-    const chartData = marketDataSourceId === 'rithmic'
-      ? fillShortCandleGaps(visibleData)
-      : visibleData;
-    return aggregateCandles(chartData, timeframe);
-  }, [rawData, currentIndex, timeframe, marketDataSourceId]);
+  const series = useMemo(
+    () => getVisibleSeries(rawData, timeframe, currentIndex),
+    [rawData, currentIndex, timeframe],
+  );
 
-  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, symbol, aggregatedData, timeframe });
+  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, symbol, series, timeframe });
   const isLiveDataLoading = marketDataLoading && marketDataSourceId !== null;
   const connectionWarning = marketDataSourceId === 'rithmic'
     ? marketDataConnectionLost
@@ -146,25 +135,13 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     const chart = chartRef.current;
     if (!chart) return;
     const previous = activeAnchoredOverlayRef.current;
-    if (previous && (!selectedOverlay || previous.id !== selectedOverlay.id)) {
-      const extendData = previous.extendData && typeof previous.extendData === 'object'
-        ? previous.extendData as Record<string, unknown>
-        : {};
-      chart.overrideOverlay({
-        id: previous.id,
-        extendData: { ...extendData, showHandles: false },
-      });
+    if (previous && previous.id !== selectedOverlay?.id) {
+      patchOverlayExtendData(chart, previous, { showHandles: false });
       activeAnchoredOverlayRef.current = null;
     }
 
-    if (selectedOverlay && getAnchoredIndicatorForRangeOverlay(selectedOverlay.name)) {
-      const extendData = selectedOverlay.extendData && typeof selectedOverlay.extendData === 'object'
-        ? selectedOverlay.extendData as Record<string, unknown>
-        : {};
-      chart.overrideOverlay({
-        id: selectedOverlay.id,
-        extendData: { ...extendData, showHandles: true },
-      });
+    if (selectedOverlay && isAnchoredRangeOverlay(selectedOverlay.name)) {
+      patchOverlayExtendData(chart, selectedOverlay, { showHandles: true });
       activeAnchoredOverlayRef.current = selectedOverlay;
     }
   }, [chartRef, selectedOverlay]);
@@ -173,25 +150,37 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     chartId: id,
     chartReady,
     symbol,
-    dataReady: aggregatedData.length > 0,
+    dataReady: series.count > 0,
     onAnchoredOverlaySelected: handleOverlaySelected,
   });
-  useTradeOverlays(chartRef, chartReady);
-  const [pendingRangeIndicator, setPendingRangeIndicator] = useState<'AVWAP' | 'AVP' | null>(null);
+  useTradeOverlays(chartRef, chartReady, series.bars);
+  useDaySeparators(chartRef, chartReady);
+  const [pendingRangeIndicator, setPendingRangeIndicator] = useState<AnchoredIndicatorName | null>(null);
+  const { addIndicator, removeIndicator, instances: indicatorInstances } = indicators;
 
-  const handleOverlayCreated = useCallback((overlay: Overlay) => {
+  /** Creates the anchored indicator that a range overlay drives, if any. */
+  const attachAnchoredIndicator = useCallback((overlay: Overlay): boolean => {
     const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
     const range = getOverlayTimestampRange(overlay);
-    if (anchoredIndicator && range) {
-      indicators.addIndicator(anchoredIndicator, {
-        startTimestamp: range[0],
-        endTimestamp: range[1],
-        overlayId: overlay.id,
-      });
-      setPendingRangeIndicator(null);
-    }
+    if (!anchoredIndicator || !range) return false;
+    addIndicator(anchoredIndicator, {
+      startTimestamp: range[0],
+      endTimestamp: range[1],
+      overlayId: overlay.id,
+    });
+    return true;
+  }, [addIndicator]);
+
+  /** Removes the anchored indicator linked to a range overlay, if any. */
+  const detachAnchoredIndicator = useCallback((overlayId: string) => {
+    const linkedIndicator = indicatorInstances.find(instance => isLinkedRangeOverlay(instance, overlayId));
+    if (linkedIndicator) removeIndicator(linkedIndicator.id);
+  }, [indicatorInstances, removeIndicator]);
+
+  const handleOverlayCreated = useCallback((overlay: Overlay) => {
+    if (attachAnchoredIndicator(overlay)) setPendingRangeIndicator(null);
     recordAdd(overlay);
-  }, [indicators, recordAdd]);
+  }, [attachAnchoredIndicator, recordAdd]);
 
   const handleOverlayChanged = useCallback((overlay: Overlay) => {
     const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
@@ -214,26 +203,20 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
 
   const handleIndicatorSelect = useCallback((id: string) => {
     indicators.setEditingInstanceId(id);
+    const chart = chartRef.current;
     const instance = indicators.instances.find(item => item.id === id);
-    if (!instance || (instance.name !== 'AVWAP' && instance.name !== 'AVP')) return;
+    if (!chart || !instance || !isAnchoredIndicator(instance.name)) return;
 
-    const overlayId = instance.rangeOverlayId ?? `${instance.id}_range`;
-    const overlay = chartRef.current?.getOverlayById(overlayId);
+    const overlay = chart.getOverlayById(getRangeOverlayId(instance));
     if (!overlay) return;
-    const extendData = overlay.extendData && typeof overlay.extendData === 'object'
-      ? overlay.extendData as Record<string, unknown>
-      : {};
-    chartRef.current?.overrideOverlay({
-      id: overlay.id,
-      extendData: { ...extendData, showHandles: true },
-    });
+    patchOverlayExtendData(chart, overlay, { showHandles: true });
     selectedForDeleteRef.current = overlay.id;
   }, [chartRef, indicators, selectedForDeleteRef]);
 
   const handleAddIndicator = useCallback((name: string) => {
     const rangeOverlay = getRangeOverlayForAnchoredIndicator(name);
-    if (rangeOverlay) {
-      setPendingRangeIndicator(name as 'AVWAP' | 'AVP');
+    if (rangeOverlay && isAnchoredIndicator(name)) {
+      setPendingRangeIndicator(name);
       indicators.setShowAddMenu(false);
       handleToolClick(rangeOverlay);
       return;
@@ -242,15 +225,14 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   }, [handleToolClick, indicators]);
 
   const removeOverlayAndLinkedIndicator = useCallback((overlay: Overlay) => {
-    const linkedIndicator = indicators.instances.find(instance =>
-      isLinkedRangeOverlay(instance, overlay.id),
-    );
+    const linkedIndicator = indicatorInstances.find(instance => isLinkedRangeOverlay(instance, overlay.id));
     if (linkedIndicator) {
-      indicators.removeIndicator(linkedIndicator.id);
+      // Removing the indicator also removes its range overlay.
+      removeIndicator(linkedIndicator.id);
       return;
     }
     chartRef.current?.removeOverlay({ id: overlay.id });
-  }, [chartRef, indicators]);
+  }, [chartRef, indicatorInstances, removeIndicator]);
 
   const clearOverlays = useCallback(() => {
     chartRef.current?.removeOverlay({ groupId: DRAWING_GROUP_ID });
@@ -270,107 +252,51 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   }, [selectedOverlay, chartRef, recordRemove, removeOverlayAndLinkedIndicator]);
 
   const handleUndo = useCallback(() => {
-    undo(chartRef.current, id => {
-      if (selectedOverlay?.id === id) setSelectedOverlay(null);
-      const linkedIndicator = indicators.instances.find(instance =>
-        isLinkedRangeOverlay(instance, id),
-      );
-      if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
-    }, overlay => {
-      const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
-      const range = getOverlayTimestampRange(overlay);
-      if (anchoredIndicator && range) {
-        indicators.addIndicator(anchoredIndicator, {
-          startTimestamp: range[0],
-          endTimestamp: range[1],
-          overlayId: overlay.id,
-        });
-      }
-    });
-  }, [undo, chartRef, selectedOverlay, indicators]);
+    undo(chartRef.current, overlayId => {
+      setSelectedOverlay(prev => (prev?.id === overlayId ? null : prev));
+      detachAnchoredIndicator(overlayId);
+    }, attachAnchoredIndicator);
+  }, [undo, chartRef, detachAnchoredIndicator, attachAnchoredIndicator]);
 
   const handleRedo = useCallback(() => {
     redo(chartRef.current, overlay => {
       setSelectedOverlay(overlay);
-      const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
-      const range = getOverlayTimestampRange(overlay);
-      if (anchoredIndicator && range) {
-        indicators.addIndicator(anchoredIndicator, {
-          startTimestamp: range[0],
-          endTimestamp: range[1],
-          overlayId: overlay.id,
-        });
-      }
-    }, overlayId => {
-      const linkedIndicator = indicators.instances.find(instance =>
-        isLinkedRangeOverlay(instance, overlayId),
-      );
-      if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
-    });
-  }, [redo, chartRef, indicators]);
+      attachAnchoredIndicator(overlay);
+    }, detachAnchoredIndicator);
+  }, [redo, chartRef, attachAnchoredIndicator, detachAnchoredIndicator]);
+
+  const deleteSelectedOverlay = useCallback(() => {
+    const chart = chartRef.current;
+    const idToDelete = selectedForDeleteRef.current;
+    if (!chart || !idToDelete) return;
+    const overlay = chart.getOverlayById(idToDelete);
+    if (!overlay) return;
+    recordRemove(overlay);
+    removeOverlayAndLinkedIndicator(overlay);
+    selectedForDeleteRef.current = null;
+    setSelectedOverlay(prev => (prev?.id === idToDelete ? null : prev));
+  }, [chartRef, selectedForDeleteRef, recordRemove, removeOverlayAndLinkedIndicator]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.ctrlKey || e.metaKey;
-      const chart = chartRef.current;
+      const key = e.key.toLowerCase();
 
       if (e.ctrlKey && e.shiftKey && (e.key === 'Shift' || e.key === 'Control')) {
         handleToolClick('measurement');
-      } else if (isMod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      } else if (isMod && key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        undo(chart, id => {
-          if (selectedOverlay?.id === id) setSelectedOverlay(null);
-          const linkedIndicator = indicators.instances.find(instance =>
-            isLinkedRangeOverlay(instance, id),
-          );
-          if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
-        }, overlay => {
-          const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
-          const range = getOverlayTimestampRange(overlay);
-          if (anchoredIndicator && range) {
-            indicators.addIndicator(anchoredIndicator, {
-              startTimestamp: range[0],
-              endTimestamp: range[1],
-              overlayId: overlay.id,
-            });
-          }
-        });
-      } else if ((isMod && e.key.toLowerCase() === 'y') || (isMod && e.shiftKey && e.key.toLowerCase() === 'z')) {
+        handleUndo();
+      } else if (isMod && (key === 'y' || (e.shiftKey && key === 'z'))) {
         e.preventDefault();
-        redo(chart, overlay => {
-          setSelectedOverlay(overlay);
-          const anchoredIndicator = getAnchoredIndicatorForRangeOverlay(overlay.name);
-          const range = getOverlayTimestampRange(overlay);
-          if (anchoredIndicator && range) {
-            indicators.addIndicator(anchoredIndicator, {
-              startTimestamp: range[0],
-              endTimestamp: range[1],
-              overlayId: overlay.id,
-            });
-          }
-        }, overlayId => {
-          const linkedIndicator = indicators.instances.find(instance =>
-            isLinkedRangeOverlay(instance, overlayId),
-          );
-          if (linkedIndicator) indicators.removeIndicator(linkedIndicator.id);
-        });
-      } else if ((e.key === 'Delete') && chart) {
-        const idToDelete = selectedForDeleteRef.current;
-        if (idToDelete) {
-          const overlay = chart.getOverlayById(idToDelete);
-          if (overlay) {
-            recordRemove(overlay);
-            removeOverlayAndLinkedIndicator(overlay);
-            selectedForDeleteRef.current = null;
-            setSelectedOverlay(prev => (prev?.id === idToDelete ? null : prev));
-          }
-        }
+        handleRedo();
+      } else if (e.key === 'Delete') {
+        deleteSelectedOverlay();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [chartRef, selectedOverlay, undo, redo, recordRemove, selectedForDeleteRef, indicators, handleToolClick, removeOverlayAndLinkedIndicator]);
-
+  }, [handleUndo, handleRedo, handleToolClick, deleteSelectedOverlay]);
 
   return (
     <div className="w-full h-full flex flex-col bg-dark-900 text-slate-300">
@@ -443,15 +369,9 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
               overlayColor={overlayColor}
               overlayOpacity={overlayOpacity}
               overlayFontSize={overlayFontSize}
-              onColorChange={color => {
-                setOverlayColor(color);
-              }}
-              onOpacityChange={opacity => {
-                setOverlayOpacity(opacity);
-              }}
-              onFontSizeChange={size => {
-                setOverlayFontSize(size);
-              }}
+              onColorChange={setOverlayColor}
+              onOpacityChange={setOverlayOpacity}
+              onFontSizeChange={setOverlayFontSize}
               onRemove={handleOverlayRemove}
               onClose={() => setSelectedOverlay(null)}
               chartRef={chartRef}
