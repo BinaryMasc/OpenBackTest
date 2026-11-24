@@ -19,11 +19,12 @@ import { ContextMenu } from './ContextMenu';
 import { useTradeStore } from '../../store/useTradeStore';
 import { useExecutionStore } from '../../store/useExecutionStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
+import { BinanceService } from '../../services/binance';
 import { useContextMenu } from '../../hooks/useContextMenu';
 import { CandleStyleEditor } from './CandleStyleEditor';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
 import type { Timeframe } from '../../types';
-import { getVisibleSeries } from '../../utils/series';
+import { EMPTY_SERIES, getNativeSeries, getVisibleSeries } from '../../utils/series';
 import type { ExecutionPosition } from '../../services/execution';
 import {
   getAnchoredIndicatorForRangeOverlay,
@@ -51,12 +52,15 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const currentIndex = useBacktestStore(state => state.currentIndex);
   const mode = useBacktestStore(state => state.mode);
   const symbol = useBacktestStore(state => state.symbol);
+  const marketDataConnected = useMarketDataStore(state => state.isConnected);
   const marketDataLoading = useMarketDataStore(state => state.isLoading);
   const marketDataSourceId = useMarketDataStore(state => state.sourceId);
   const marketDataConnectionLost = useMarketDataStore(state => state.isConnectionLost);
   const marketDataIsStale = useMarketDataStore(state => state.isDataStale);
   const marketDataSymbol = useMarketDataStore(state => state.symbol);
   const refreshMarketData = useMarketDataStore(state => state.setSymbol);
+  const binanceHistory = useMarketDataStore(state => state.binanceHistory[timeframe]);
+  const reloadBinanceHistory = useMarketDataStore(state => state.reloadBinanceHistory);
   const accountState = useExecutionStore(state => state.accountState);
   const placeOrder = useExecutionStore(state => state.placeOrder);
   const requestConfirmation = useExecutionStore(state => state.requestConfirmation);
@@ -66,20 +70,28 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   const setEditorOpen = useChartStyleStore(state => state.setEditorOpen);
 
 
-  const series = useMemo(
-    () => getVisibleSeries(rawData, timeframe, currentIndex),
-    [rawData, currentIndex, timeframe],
-  );
+  const isBinanceChart = marketDataConnected && marketDataSourceId === BinanceService.id && symbol === marketDataSymbol;
+  const usesNativeHistory = isBinanceChart && timeframe !== '1m';
+  const candles = usesNativeHistory ? binanceHistory?.candles : rawData;
+  const cursor = usesNativeHistory ? undefined : currentIndex;
+  const series = useMemo(() => {
+    if (!candles) return EMPTY_SERIES;
+    return cursor === undefined ? getNativeSeries(candles) : getVisibleSeries(candles, timeframe, cursor);
+  }, [candles, cursor, timeframe]);
 
-  const { chartRef, containerRef, isReady: chartReady } = useChart({ containerId: id, symbol, series, timeframe });
-  const isLiveDataLoading = marketDataLoading && marketDataSourceId !== null;
-  const connectionWarning = marketDataSourceId === 'rithmic'
+  const { chartRef, containerRef, isReady: chartReady } = useChart({
+    containerId: id, symbol, series, timeframe, preserveHistoryView: isBinanceChart
+  });
+  const isLiveDataLoading = (isBinanceChart ? binanceHistory?.isLoading ?? marketDataLoading : marketDataLoading)
+    && marketDataSourceId !== null;
+  const rithmicWarning = marketDataSourceId === 'rithmic'
     ? marketDataConnectionLost
       ? 'Rithmic connection lost'
       : marketDataIsStale
         ? 'No Rithmic market data received recently'
         : undefined
     : undefined;
+  const connectionWarning = isBinanceChart ? binanceHistory?.error ?? undefined : rithmicWarning;
 
   const [selectedOverlay, setSelectedOverlay] = useState<Overlay | null>(null);
   const activeAnchoredOverlayRef = useRef<Overlay | null>(null);
@@ -98,13 +110,17 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   }, [chartRef]);
 
   const handleRefreshData = useCallback(() => {
+    if (isBinanceChart) {
+      void reloadBinanceHistory(timeframe);
+      return;
+    }
     if (mode === 'live' && marketDataSymbol) {
       void refreshMarketData(marketDataSymbol);
       return;
     }
     const chart = chartRef.current;
     if (chart) chart.applyNewData(chart.getDataList());
-  }, [chartRef, mode, marketDataSymbol, refreshMarketData]);
+  }, [chartRef, isBinanceChart, reloadBinanceHistory, timeframe, mode, marketDataSymbol, refreshMarketData]);
 
   const livePosition: ExecutionPosition | null = mode === 'live'
     ? accountState?.positions.find(item => sameSymbol(item.symbol, symbol) && item.quantity > 0) || null

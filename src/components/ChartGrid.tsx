@@ -1,10 +1,16 @@
 import { useBacktestStore } from '../store/useBacktestStore';
+import { useMarketDataStore } from '../store/useMarketDataStore';
 import { TradingChart } from './TradingChart';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
-import React from 'react';
+import React, { useEffect } from 'react';
 
 export function ChartGrid() {
   const charts = useBacktestStore(state => state.charts);
+  const syncBinanceTimeframes = useMarketDataStore(state => state.syncBinanceTimeframes);
+
+  useEffect(() => {
+    void syncBinanceTimeframes();
+  }, [charts, syncBinanceTimeframes]);
 
   return (
     <div className="w-full h-full p-1 bg-dark-900">

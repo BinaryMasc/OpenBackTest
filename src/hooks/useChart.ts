@@ -14,14 +14,16 @@ interface UseChartOptions {
   symbol?: string;
   series: VisibleSeries;
   timeframe: Timeframe;
+  preserveHistoryView?: boolean;
 }
 
-export function useChart({ containerId, symbol = '', series, timeframe }: UseChartOptions) {
+export function useChart({ containerId, symbol = '', series, timeframe, preserveHistoryView = false }: UseChartOptions) {
   const chartRef = useRef<Chart | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const prevTimeframeRef = useRef(timeframe);
   const prevCountRef = useRef(0);
+  const prevSymbolRef = useRef(symbol);
   const symbolRef = useRef(symbol);
   const timeframeRef = useRef(timeframe);
   const restoredViewKeyRef = useRef<string | null>(null);
@@ -147,9 +149,12 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
 
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !isReady || !symbol || series.count === 0) return;
-
     const restoreKey = `${getSymbolKey(symbol)}:${containerId}:${timeframe}`;
+    if (timeframe !== prevTimeframeRef.current) {
+      restoredViewKeyRef.current = restoreKey;
+      return;
+    }
+    if (!chart || !isReady || !symbol || series.count === 0) return;
     if (restoredViewKeyRef.current === restoreKey) return;
 
     const savedView = useChartStateStore.getState().getView(symbol, containerId, timeframe);
@@ -200,8 +205,10 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
     const { bars, count, last } = series;
     const previousCount = prevCountRef.current;
     const isNewTimeframe = timeframe !== prevTimeframeRef.current;
+    const isNewSymbol = symbol !== prevSymbolRef.current;
     prevTimeframeRef.current = timeframe;
     prevCountRef.current = count;
+    prevSymbolRef.current = symbol;
 
     if (!last) {
       chart.applyNewData([]);
@@ -211,9 +218,30 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
     const loaded = chart.getDataList();
     const isSameDataSet = loaded.length > 0 && loaded[0].timestamp === (count > 1 ? bars[0] : last).timestamp;
     const isStep = count === previousCount || count === previousCount + 1;
+    const previousBar = preserveHistoryView && count === previousCount ? loaded[count - 2] : undefined;
+    const updatedBar = bars[count - 2];
+    // Live polling can finalize the previous candle after the next one has opened.
+    const correctedPreviousBar = previousBar && updatedBar && (
+      previousBar.open !== updatedBar.open || previousBar.high !== updatedBar.high
+      || previousBar.low !== updatedBar.low || previousBar.close !== updatedBar.close
+      || previousBar.volume !== updatedBar.volume
+    );
 
-    if (!isSameDataSet || isNewTimeframe || !isStep) {
-      chart.applyNewData(visibleBars(series));
+    if (!isSameDataSet || isNewTimeframe || isNewSymbol || !isStep || correctedPreviousBar) {
+      const visibleEnd = preserveHistoryView && !isNewTimeframe && !isNewSymbol
+        ? chart.getVisibleRange().to
+        : loaded.length;
+      const anchor = visibleEnd < loaded.length ? loaded[visibleEnd - 1]?.timestamp : undefined;
+      const nextData = visibleBars(series);
+      chart.applyNewData(nextData);
+      if (isNewTimeframe) chart.scrollToRealTime();
+      if (anchor !== undefined) {
+        const anchorIndex = nextData.findIndex(bar => bar.timestamp >= anchor);
+        if (anchorIndex >= 0) {
+          const barsToScroll = chart.getVisibleRange().realTo - (anchorIndex + 1);
+          chart.scrollByDistance(barsToScroll * chart.getBarSpace());
+        }
+      }
       if (isNewTimeframe) {
         // Defer resize to allow klinecharts to process applyNewData and avoid UI freeze
         setTimeout(() => chartRef.current?.resize(), 50);
@@ -226,7 +254,7 @@ export function useChart({ containerId, symbol = '', series, timeframe }: UseCha
       chart.updateData(bars[count - 2]);
     }
     chart.updateData(last);
-  }, [series, timeframe]);
+  }, [preserveHistoryView, series, symbol, timeframe]);
 
   useEffect(() => {
     const handleResize = () => {

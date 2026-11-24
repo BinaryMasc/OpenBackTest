@@ -31,6 +31,11 @@ function toBar(candle: Candle): KLineData {
   };
 }
 
+export function getNativeSeries(candles: Candle[]): VisibleSeries {
+  const bars = candles.map(toBar);
+  return { bars, count: bars.length, last: bars.at(-1) ?? null };
+}
+
 const barCache = new WeakMap<Candle[], Map<Timeframe, KLineData[]>>();
 
 /** Aggregated chart bars for a data set, computed once per (data set, timeframe). */

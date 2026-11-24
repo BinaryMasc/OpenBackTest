@@ -4,6 +4,7 @@ import { useBacktestStore } from '../../store/useBacktestStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useTradeStore } from '../../store/useTradeStore';
 import { useChartStyleStore } from '../../store/useChartStyleStore';
+import { BINANCE_HISTORY_LIMITS, BinanceService, getDefaultBinanceHistoryLimit } from '../../services/binance';
 import { TIMEFRAMES } from '../../types';
 
 /**
@@ -33,6 +34,12 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
   //const mode = useBacktestStore(state => state.mode);
 
   const isConnected = useMarketDataStore(state => state.isConnected);
+  const isBinanceChart = useMarketDataStore(state => state.isConnected && state.sourceId === BinanceService.id && state.symbol === symbol);
+  const binanceHistoryLimit = useMarketDataStore(state => state.binanceHistoryLimits[timeframe]);
+  const setBinanceHistoryLimit = useMarketDataStore(state => state.setBinanceHistoryLimit);
+  const binanceCandleCount = useMarketDataStore(state => state.binanceHistory[timeframe]?.candles?.length);
+  const isHistoryLoading = useMarketDataStore(state => state.binanceHistory[timeframe]?.isLoading);
+  const selectedHistoryLimit = binanceHistoryLimit ?? getDefaultBinanceHistoryLimit(timeframe);
   const sourceName = useMarketDataStore(state => state.sourceName);
   const symbols = useMarketDataStore(state => state.symbols);
   const setSymbol = useMarketDataStore(state => state.setSymbol);
@@ -159,6 +166,7 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
         <div className="relative bg-dark-700/50" ref={tfRef}>
           <button
             onClick={() => setIsTfOpen(!isTfOpen)}
+            aria-expanded={isTfOpen}
             className={`text-[13px] font-bold px-2.5 py-0.5 rounded border transition-all flex items-center gap-1.5 uppercase   ${isTfOpen ? 'text-primary-400 border-primary-500/30' : 'bg-dark-900/50 text-slate-400 border-dark-700/30 hover:text-slate-200 hover:border-dark-600'}`}
           >
             {timeframe}
@@ -166,7 +174,7 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
           </button>
 
           {isTfOpen && (
-            <div className="absolute top-full left-0 mt-2 bg-dark-800 border border-dark-700 rounded-lg shadow-2xl py-1 z-[100] min-w-[70px] animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className={`absolute top-full mt-2 bg-dark-800 border border-dark-700 rounded-lg shadow-2xl py-1 z-[100] animate-in fade-in slide-in-from-top-1 duration-150 ${isBinanceChart ? 'right-0 w-52 md:right-auto md:left-0' : 'left-0 min-w-[70px]'}`}>
               {TIMEFRAMES.map(tf => (
                 <button
                   key={tf}
@@ -179,6 +187,29 @@ export function SymbolLegend({ chartId }: SymbolLegendProps) {
                   {tf.toUpperCase()}
                 </button>
               ))}
+              {isBinanceChart && (
+                <div className="mt-1 border-t border-dark-700 px-3 pb-2 pt-3">
+                  <div className="mb-2 flex items-center justify-between gap-2 text-[11px]">
+                    <span id={`${chartId}-history-label`} className="font-semibold text-slate-200">History candles</span>
+                    <span role="status" className="text-slate-400 tabular-nums">
+                      {isHistoryLoading ? 'Loading…' : `${((timeframe === '1m' ? rawData.length : binanceCandleCount) ?? 0).toLocaleString()} loaded`}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-labelledby={`${chartId}-history-label`}
+                      value={selectedHistoryLimit}
+                      onChange={event => void setBinanceHistoryLimit(timeframe, Number(event.target.value))}
+                      className="w-full cursor-pointer appearance-none rounded-md border-0 bg-dark-900 py-1.5 pl-2.5 pr-8 text-xs font-medium tabular-nums text-slate-200 scheme-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
+                    >
+                      {BINANCE_HISTORY_LIMITS.map(limit => (
+                        <option key={limit} value={limit}>{limit.toLocaleString()}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

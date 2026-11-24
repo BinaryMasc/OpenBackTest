@@ -4,6 +4,7 @@ import { useBacktestStore } from '../../store/useBacktestStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useTradeStore } from '../../store/useTradeStore';
 import { RITHMIC_SOURCE_ID } from '../../services/rithmic';
+import { BinanceService } from '../../services/binance';
 import { parseCandleCsv } from '../../utils/csv';
 
 const PRESETS = [
@@ -65,6 +66,8 @@ export function DataSourceSection({ onOpenRithmicDialog }: DataSourceSectionProp
       alert('Failed to parse CSV data. Make sure headers are: datetime,open,high,low,close,volume');
       return;
     }
+    const marketData = useMarketDataStore.getState();
+    if (marketData.sourceId === BinanceService.id) marketData.disconnectSource();
     setUploadProgress(100);
     loadData(candles, symbol || undefined);
     useTradeStore.getState().reset();

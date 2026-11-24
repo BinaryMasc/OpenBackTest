@@ -15,7 +15,7 @@ export interface BacktestState {
   uploadProgress: number; // 0-100
   mode: 'playback' | 'simulation' | 'live';
 
-  loadData: (data: Candle[], symbol?: string) => void;
+  loadData: (data: Candle[], symbol?: string, followLatest?: boolean) => void;
   setUploading: (uploading: boolean) => void;
   setUploadProgress: (progress: number) => void;
   stepForward: () => void;
@@ -45,7 +45,7 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
   uploadProgress: 0,
   mode: 'playback',
 
-  loadData: (data: Candle[], symbol?: string) => {
+  loadData: (data: Candle[], symbol?: string, followLatest = false) => {
     const nextSymbol = symbol ?? '';
     const persistedCharts = nextSymbol
       ? useChartStateStore.getState().getStateForSymbol(nextSymbol)?.charts
@@ -59,7 +59,7 @@ export const useBacktestStore = create<BacktestState>((set, get) => ({
       rawData: data,
       symbol: nextSymbol,
       charts,
-      currentIndex: currentState.mode === 'live' ? data.length - 1 : Math.min(100, data.length - 1),
+      currentIndex: followLatest || currentState.mode === 'live' ? data.length - 1 : Math.min(100, data.length - 1),
       isPlaying: false,
       isUploading: false,
       uploadProgress: 0

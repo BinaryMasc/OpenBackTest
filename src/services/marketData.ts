@@ -29,7 +29,7 @@ export interface MarketDataConnection {
   readonly sourceName: string;
 
   listSymbols: () => Promise<MarketSymbol[]>;
-  fetchHistoricalCandles: (symbol: string, interval?: string, limit?: number) => Promise<Candle[]>;
+  fetchHistoricalCandles: (symbol: string, interval?: string, limit?: number, signal?: AbortSignal) => Promise<Candle[]>;
   subscribeCandles: (
     symbol: string,
     interval: string,
