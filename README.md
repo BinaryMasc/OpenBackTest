@@ -2,9 +2,9 @@
 
 [Open in browser](https://binarymasc.github.io/OpenBackTest/)
 
-A manual backtest open-source tool Client-Side Only.
+OpenBackTest is an open-source browser tool for technical analysis and manual backtesting. Use it to study live charts or replay historical candles to test a trading strategy.
 
-Check the [Codebase Guide](CODEBASE.md) for a detailed file-by-file documentation.
+For development commands, architecture, and testing conventions, see the [contributor guide](AGENTS.md).
 
 **Playback**
 ![Playback](/public/playback.png)
@@ -19,10 +19,11 @@ Check the [Codebase Guide](CODEBASE.md) for a detailed file-by-file documentatio
 ![Simulation Statistics](/public/simulation_metrics.png)
 
 ### Features
+
 - Import historical data and visualize it on a chart.
 - Simulate market data realtime.
 - Backtest with your trading strategy.
-- Backtest analysis tools, chart tools and indicators.
+- Analyze price action with lines, Fibonacci retracements, and indicators such as FVG and Anchored VWAP.
 - Live broker data (Rithmic, Binance)
 - Live order execution.
 
@@ -64,3 +65,6 @@ npm run coverage   # Run tests with coverage report
 - [ ] Chart: CTRL+C and CTRL+V to copy and paste overlays.
 - [ ] Custom Indicators (Engine): Ability to load dynamic scripts with indicators or strategies in execution-time.
 - [ ] Expert Advisors (Engine): Algorithmic trading and backtest engine integration.
+- [ ] Data and trading: Live trading Binance.
+- [ ] Data and trading: data feed and trading Bitget.
+- [ ] Chart: Advanced volume indicators (liquidity and large orders), where supported by the data feed.
