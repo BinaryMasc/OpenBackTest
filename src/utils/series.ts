@@ -1,7 +1,6 @@
 import type { KLineData } from 'klinecharts';
 import type { Candle, Timeframe } from '../types';
-import { TIMEFRAME_SECONDS } from '../types';
-import { aggregateCandles } from './aggregation';
+import { aggregateCandles, candleBucketStart } from './aggregation';
 
 /**
  * The part of a data set that is visible at the playback cursor.
@@ -74,8 +73,7 @@ export function getVisibleSeries(rawData: Candle[], timeframe: Timeframe, curren
     return { bars, count: cursor + 1, last: bars[cursor] };
   }
 
-  const bucketSeconds = TIMEFRAME_SECONDS[timeframe];
-  const bucketStart = Math.floor(rawData[cursor].time / bucketSeconds) * bucketSeconds;
+  const bucketStart = candleBucketStart(rawData[cursor].time, timeframe);
   let first = cursor;
   while (first > 0 && rawData[first - 1].time >= bucketStart) first--;
 

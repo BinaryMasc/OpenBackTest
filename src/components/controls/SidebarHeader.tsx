@@ -1,6 +1,5 @@
 export function SidebarHeader() {
   return (
-   
   <header className="mb-5 shrink-0 border-b border-dark-700 pb-4">
     <div className="flex min-h-10 items-center">
       <img src={`${import.meta.env.BASE_URL}icon.png`} alt="" className="hidden size-10 object-contain md:block" />
@@ -25,6 +24,5 @@ export function SidebarHeader() {
       </a>
     </div>
   </header>
-
   );
 }

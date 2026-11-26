@@ -29,7 +29,12 @@ describe('Controls sidebar', () => {
   const setMode = vi.fn();
   let marketDataState: {
     sourceId: string | null;
+    sourceName: string | null;
+    isConnected: boolean;
     isLoading: boolean;
+    error: string | null;
+    connectDefaultSource: ReturnType<typeof vi.fn>;
+    connectSource: ReturnType<typeof vi.fn>;
     disconnectSource: ReturnType<typeof vi.fn>;
   };
 
@@ -121,10 +126,52 @@ describe('Controls sidebar', () => {
     render(<Controls />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Open trading controls menu' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Simulation' }));
+    expect(screen.getByRole('radio', { name: 'Playback' })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: 'Simulation' }));
 
     expect(setMode).toHaveBeenCalledWith('simulation');
     expect(screen.getByRole('button', { name: 'Close trading controls menu' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps Mode open when a feed connects and collapses the two data sections', () => {
+    const { rerender } = render(<Controls />);
+    const mode = screen.getByRole('button', { name: 'Mode' });
+    const session = screen.getByRole('button', { name: 'Session Management' });
+    const source = screen.getByRole('button', { name: 'Data Source' });
+    fireEvent.click(session);
+    marketDataState.isLoading = true;
+    rerender(<Controls />);
+    for (const toggle of [mode, session, source]) expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    marketDataState.isLoading = false;
+    marketDataState.isConnected = true;
+    marketDataState.sourceName = 'Binance';
+    rerender(<Controls />);
+    for (const toggle of [session, source]) expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(mode).toHaveAttribute('aria-expanded', 'true');
+    expect(source).toHaveTextContent('Binance');
+    expect(screen.getByRole('radio', { name: 'Playback' })).toBeChecked();
+
+    fireEvent.click(source);
+    expect(screen.getByRole('button', { name: 'Disconnect Binance' })).toBeVisible();
+    fireEvent.click(mode);
+    marketDataState.isConnected = false;
+    rerender(<Controls />);
+    marketDataState.isConnected = true;
+    rerender(<Controls />);
+    expect(mode).toHaveAttribute('aria-expanded', 'false');
+    expect(session).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(mode);
+    expect(screen.getByRole('radio', { name: 'Playback' })).toBeChecked();
+  });
+
+  it('starts with Mode open when the sidebar mounts with a connected source', () => {
+    marketDataState.isConnected = true;
+    render(<Controls />);
+    expect(screen.getByRole('button', { name: 'Mode' })).toHaveAttribute('aria-expanded', 'true');
+    for (const name of ['Session Management', /^Data Source/]) {
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-expanded', 'false');
+    }
   });
 
   it('retracts the drawer before opening the Rithmic dialog', () => {

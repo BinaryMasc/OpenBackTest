@@ -24,6 +24,17 @@ describe('visible series', () => {
     }
   });
 
+  it('starts a new weekly bar on Monday UTC and reveals only played minutes', () => {
+    const monday = Date.UTC(2026, 0, 5) / 1000;
+    const minutes = [-60, 0, 60].map((offset, i) => ({ ...candles[i], time: monday + offset }));
+    const visible = visibleBars(getVisibleSeries(minutes, '1w', 1));
+    expect(visible).toEqual([
+      { timestamp: (monday - 7 * 86400) * 1000, open: 100, high: 105, low: 95, close: 101, volume: 1 },
+      { timestamp: monday * 1000, open: 101, high: 107, low: 95, close: 102, volume: 2 },
+    ]);
+    expect(getBars(minutes, '1w')[1]).toMatchObject({ timestamp: monday * 1000, high: 109, close: 103, volume: 5 });
+  });
+
   it('caches bars per data set and timeframe', () => {
     expect(getBars(candles, '5m')).toBe(getBars(candles, '5m'));
     expect(getBars(candles, '5m')).not.toBe(getBars([...candles], '5m'));

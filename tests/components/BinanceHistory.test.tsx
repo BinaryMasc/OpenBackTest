@@ -140,6 +140,7 @@ describe('Binance candle history', () => {
     await act(() => vi.advanceTimersByTimeAsync(60));
     expect(chart.getVisibleRange().to).toBe(1602);
 
+    fireEvent.click(screen.getByRole('button', { name: /^Data Source/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Preset Data Sets' }));
     fireEvent.click(screen.getByRole('button', { name: 'BTC/USDT 1m (2025-2026)' }));
     await act(() => vi.advanceTimersByTimeAsync(2000));
@@ -151,6 +152,36 @@ describe('Binance candle history', () => {
     fireEvent.click(screen.getAllByTitle('Step Forward')[0]);
     expect(chartData('minute-chart')).toHaveLength(102);
     expect(chartData()[0].close).toBe(22);
+  });
+
+  it('loads and updates native weekly candles while preserving the minute price feed', async () => {
+    vi.useFakeTimers();
+    const monday = Date.UTC(2026, 0, 5);
+    const minutes = klines(12, 60_000);
+    const weeks = [
+      [monday, '120', '140', '110', '132', '84'],
+      [monday + 7 * DAY_MS, '132', '149', '125', '135', '61'],
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const { pathname, searchParams } = new URL(url);
+      if (pathname.endsWith('/exchangeInfo')) return exchangeInfo('BTCUSDT');
+      const candles = searchParams.get('interval') === '1w' ? weeks : minutes;
+      return Response.json(candles.slice(-Number(searchParams.get('limit'))));
+    }));
+    render(<ChartGrid />);
+    await act(() => useMarketDataStore.getState().connectDefaultSource());
+
+    fireEvent.click(screen.getByRole('button', { name: /^1m$/i }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '1W' })));
+    expect(chartData()).toHaveLength(2);
+    expect(chartData()[0]).toMatchObject({ timestamp: monday, open: 120, close: 132, volume: 84 });
+
+    weeks[1][4] = '142';
+    minutes[11][4] = '13';
+    await act(() => vi.advanceTimersByTimeAsync(1500));
+    expect(chartData().at(-1)).toMatchObject({ timestamp: monday + 7 * DAY_MS, close: 142 });
+    const { rawData, currentIndex } = useBacktestStore.getState();
+    expect(rawData[currentIndex].close).toBe(13);
   });
 
   it('keeps the latest history selection if an older request completes late', async () => {

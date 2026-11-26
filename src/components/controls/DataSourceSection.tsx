@@ -6,6 +6,7 @@ import { useTradeStore } from '../../store/useTradeStore';
 import { RITHMIC_SOURCE_ID } from '../../services/rithmic';
 import { BinanceService } from '../../services/binance';
 import { parseCandleCsv } from '../../utils/csv';
+import { SidebarSection } from './SidebarSection';
 
 const PRESETS = [
   { name: 'BTC/USDT 1m (2025-2026)', filename: 'btc_usdt_m1_jan2025-apr2026.csv' },
@@ -93,119 +94,120 @@ export function DataSourceSection({ onOpenRithmicDialog }: DataSourceSectionProp
   if (mode === 'simulation' && candleCount > 0) return null;
 
   return (
-    <div className="mb-6 space-y-2">
-      <h3 className="text-slate-400 uppercase text-xs font-bold tracking-wider mb-3">{isLiveMode ? 'Broker Data Source' : 'Data Source'}</h3>
-      {!isLiveMode && (
-        <>
-          <input
-            type="file"
-            accept=".csv"
-            className="hidden"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className={NEUTRAL_BUTTON}
-          >
-            {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
-            {isUploading ? 'Processing...' : 'Load CSV Data'}
-          </button>
-        </>
-      )}
-
-      {!isLiveMode && (
-        <button
-          onClick={isConnected ? disconnectSource : () => void connectDefaultSource()}
-          disabled={isBusy}
-          className={`mt-2 ${isConnected ? CONNECTED_BUTTON : NEUTRAL_BUTTON}`}
-        >
-          {isConnected ? (
-            <>
-              <Activity size={18} className="animate-pulse" />
-              Disconnect {sourceName || 'Market Data'}
-            </>
-          ) : (
-            <>
-              <Zap size={18} />
-              Connect Binance Market Data
-            </>
-          )}
-        </button>
-      )}
-
-      {isLiveMode && isConnected && (
-        <button onClick={disconnectSource} disabled={isBusy} className={`mt-2 ${CONNECTED_BUTTON}`}>
-          <Activity size={18} className="animate-pulse" />
-          Disconnect {sourceName || 'Broker Data'}
-        </button>
-      )}
-
-      {!isRithmicConnected && (
-        <button onClick={onOpenRithmicDialog} disabled={isBusy} className={`mt-2 ${NEUTRAL_BUTTON}`}>
-          <Zap size={18} />
-          Connect with Rithmic credentials
-        </button>
-      )}
-
-      {!isLiveMode && (
-        <>
-          <div className="pt-4">
+    <>
+      <SidebarSection title={isLiveMode ? 'Broker Data Source' : 'Data Source'} summary={isConnected ? sourceName || 'Connected' : undefined} collapseOnConnect>
+        {!isLiveMode && (
+          <>
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+            />
             <button
-              onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
-              className="w-full flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-widest mb-3 hover:text-slate-300 transition-colors group"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className={NEUTRAL_BUTTON}
             >
-              Preset Data Sets
-              <ChevronDown
-                size={14}
-                className={`transition-transform duration-200 ${isPresetsExpanded ? '' : '-rotate-90'}`}
-              />
+              {isUploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
+              {isUploading ? 'Processing...' : 'Load CSV Data'}
             </button>
-            {isPresetsExpanded && (
-              <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                {PRESETS.map(preset => (
-                  <button
-                    key={preset.filename}
-                    onClick={() => loadPreset(preset.filename)}
-                    disabled={isUploading}
-                    className="w-full flex items-center justify-between gap-2 hover:bg-dark-700/50 text-slate-400 hover:text-white py-2 px-3 rounded-lg transition-all text-left text-xs disabled:opacity-50 disabled:cursor-not-allowed group"
-                  >
-                    <span className="truncate">{preset.name}</span>
-                    {isUploading ? (
-                      <Loader size={14} className="animate-spin text-primary-500" />
-                    ) : (
-                      <StepForward size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-primary-500" />
-                    )}
-                  </button>
-                ))}
+          </>
+        )}
+
+        {!isLiveMode && (
+          <button
+            onClick={isConnected ? disconnectSource : () => void connectDefaultSource()}
+            disabled={isBusy}
+            className={`mt-2 ${isConnected ? CONNECTED_BUTTON : NEUTRAL_BUTTON}`}
+          >
+            {isConnected ? (
+              <>
+                <Activity size={18} className="animate-pulse" />
+                Disconnect {sourceName || 'Market Data'}
+              </>
+            ) : (
+              <>
+                <Zap size={18} />
+                Connect Binance Market Data
+              </>
+            )}
+          </button>
+        )}
+
+        {isLiveMode && isConnected && (
+          <button onClick={disconnectSource} disabled={isBusy} className={`mt-2 ${CONNECTED_BUTTON}`}>
+            <Activity size={18} className="animate-pulse" />
+            Disconnect {sourceName || 'Broker Data'}
+          </button>
+        )}
+
+        {!isRithmicConnected && (
+          <button onClick={onOpenRithmicDialog} disabled={isBusy} className={`mt-2 ${NEUTRAL_BUTTON}`}>
+            <Zap size={18} />
+            Connect with Rithmic credentials
+          </button>
+        )}
+
+        {!isLiveMode && (
+          <>
+            <div className="pt-4">
+              <button
+                onClick={() => setIsPresetsExpanded(!isPresetsExpanded)}
+                className="w-full flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-widest mb-3 hover:text-slate-300 transition-colors group"
+              >
+                Preset Data Sets
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${isPresetsExpanded ? '' : '-rotate-90'}`}
+                />
+              </button>
+              {isPresetsExpanded && (
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                  {PRESETS.map(preset => (
+                    <button
+                      key={preset.filename}
+                      onClick={() => loadPreset(preset.filename)}
+                      disabled={isUploading}
+                      className="w-full flex items-center justify-between gap-2 hover:bg-dark-700/50 text-slate-400 hover:text-white py-2 px-3 rounded-lg transition-all text-left text-xs disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                      <span className="truncate">{preset.name}</span>
+                      {isUploading ? (
+                        <Loader size={14} className="animate-spin text-primary-500" />
+                      ) : (
+                        <StepForward size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-primary-500" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {isUploading && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Processing CSV...</span>
+                  <span className="text-primary-400 font-mono">{uploadProgress}%</span>
+                </div>
+                <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
+                  <div
+                    className="h-full bg-primary-500 rounded-full"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
               </div>
             )}
-          </div>
-          {isUploading && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">Processing CSV...</span>
-                <span className="text-primary-400 font-mono">{uploadProgress}%</span>
-              </div>
-              <div className="h-1.5 bg-dark-900 rounded-full overflow-hidden border border-dark-700">
-                <div
-                  className="h-full bg-primary-500 rounded-full"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
+            <div className="text-xs text-slate-500 mt-2">
+              {!isUploading && (candleCount > 0 ? `${candleCount} candles loaded` : 'No data loaded')}
             </div>
-          )}
-          <div className="text-xs text-slate-500 mt-2">
-            {!isUploading && (candleCount > 0 ? `${candleCount} candles loaded` : 'No data loaded')}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </SidebarSection>
       {marketDataError && (
-        <div className="text-xs text-red-400 mt-2" role="alert">
+        <div className="mb-4 text-xs text-red-400" role="alert">
           {marketDataError}
         </div>
       )}
-    </div>
+    </>
   );
 }
