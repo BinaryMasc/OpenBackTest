@@ -6,6 +6,7 @@ import { useChartStateStore } from '../../src/store/useChartStateStore';
 
 vi.mock('klinecharts', () => ({
   LineType: { Solid: 'solid' },
+  ActionType: { OnZoom: 'onZoom' },
   IndicatorSeries: { Normal: 'normal' },
   registerIndicator: vi.fn(),
 }));
@@ -77,6 +78,39 @@ describe('useIndicators persistence', () => {
     act(() => result.current.updateInstance('other', { settings: { downColor: '#abcdef' } }));
     expect(result.current.instances[2].settings).toEqual({ downColor: '#abcdef', extra: 2 });
     expect(result.current.instances[0].settings).toEqual({ downColor: '#102030' });
+  });
+
+  it('reserves projection space for the active timeframe and restores its settings', () => {
+    const chart = {
+      createIndicator: vi.fn(), overrideIndicator: vi.fn(), removeIndicator: vi.fn(),
+      getOffsetRightDistance: vi.fn(() => 40), setOffsetRightDistance: vi.fn(), getBarSpace: vi.fn(() => 8),
+      subscribeAction: vi.fn(), unsubscribeAction: vi.fn(),
+    };
+    const chartRef = { current: chart as unknown as Chart };
+    const options = { symbol: 'ES', timeframe: '1h' as const };
+    const hook = renderHook(({ timeframe }: { timeframe: '1h' | '1d' }) =>
+      useIndicators(chartRef, { ...options, timeframe }), { initialProps: options });
+    act(() => { hook.result.current.addIndicator('HTF Candle'); });
+    const instance = hook.result.current.instances[0];
+    expect(instance.calcParams).toEqual([86400, 3, 4]);
+    expect(chart.setOffsetRightDistance.mock.lastCall![0]).toBeGreaterThan(40);
+    act(() => hook.result.current.updateInstance(instance.id, { calcParams: [86400, 4, 8], settings: { downColor: '#ff0000' } }));
+    act(() => hook.result.current.toggleVisibility(instance.id));
+    expect(chart.setOffsetRightDistance).toHaveBeenLastCalledWith(40);
+    act(() => hook.result.current.toggleVisibility(instance.id));
+    hook.rerender({ timeframe: '1d' });
+    expect(chart.setOffsetRightDistance).toHaveBeenLastCalledWith(40);
+    expect(chart.overrideIndicator).toHaveBeenLastCalledWith(expect.objectContaining({
+      extendData: expect.objectContaining({ timeframe: '1d' }),
+    }), 'candle_pane');
+    hook.unmount();
+
+    const restored = renderHook(() => useIndicators(chartRef, options));
+    expect(restored.result.current.instances[0]).toMatchObject({
+      id: instance.id, calcParams: [86400, 4, 8], settings: { downColor: '#ff0000' },
+    });
+    act(() => restored.result.current.removeIndicator(instance.id));
+    expect(chart.setOffsetRightDistance).toHaveBeenLastCalledWith(40);
   });
 
   it('creates a range-backed anchored VWAP from two selected timestamps', () => {

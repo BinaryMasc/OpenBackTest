@@ -2,6 +2,8 @@ import type { IndicatorTemplate, KLineData } from 'klinecharts';
 
 import type { CustomIndicatorDefinition } from '../indicatorDefinition';
 
+import { isSwing } from './swings';
+
 const STRUCTURE_DEFAULT_PARAMS = [3] as const;
 
 type Bar = Pick<KLineData, 'high' | 'low' | 'close'>;
@@ -12,16 +14,6 @@ interface StructureBreak {
   price: number;
   label: 'ChoCh' | 'BoS';
   direction: Direction;
-}
-
-function isSwing(candles: Bar[], pivot: number, length: number, side: 'high' | 'low') {
-  const price = candles[pivot][side];
-  for (let offset = 1; offset <= length; offset++) {
-    const left = candles[pivot - offset][side];
-    const right = candles[pivot + offset][side];
-    if (side === 'high' ? Math.max(left, right) >= price : Math.min(left, right) <= price) return false;
-  }
-  return true;
 }
 
 export function findStructureBreaks(candles: Bar[], swingLength: number): StructureBreak[] {

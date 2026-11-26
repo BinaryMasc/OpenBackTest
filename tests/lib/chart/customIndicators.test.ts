@@ -142,7 +142,7 @@ describe('additional custom indicators', () => {
 
   it('registers anchored VWAP, anchored volume profile, and ATR independently', () => {
     expect(new Set(registered.mock.calls.map(([indicator]) => indicator.name))).toEqual(
-      new Set(['VPVR', 'AVWAP', 'AVP', 'ATR', 'DAY_SEPARATOR', 'FVG', 'ChoCh-BoS']),
+      new Set(['VPVR', 'AVWAP', 'AVP', 'ATR', 'DAY_SEPARATOR', 'FVG', 'ChoCh-BoS', 'HTF Candle', 'Sweeps']),
     );
     expect(registeredByName('AVWAP').calcParams).toEqual([]);
     expect(registeredByName('AVP').calcParams).toEqual([120, 30, 70]);

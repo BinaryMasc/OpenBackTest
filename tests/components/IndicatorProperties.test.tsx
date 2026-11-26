@@ -58,3 +58,13 @@ describe('indicator properties', () => {
     expect(onUpdate).toHaveBeenCalledWith('example', { calcParams: [0] });
   });
 });
+
+it('edits projection timeframe, placement, and colors independently', () => {
+  const { onUpdate } = openProperties('HTF Candle', [86400, 3, 4]);
+  fireEvent.change(screen.getByLabelText('Higher timeframe'), { target: { value: '14400' } });
+  expect(onUpdate).toHaveBeenLastCalledWith('example', { calcParams: [14400, 3, 4] });
+  fireEvent.change(screen.getByLabelText('Offset (chart bars)'), { target: { value: '8' } });
+  expect(onUpdate).toHaveBeenLastCalledWith('example', { calcParams: [86400, 3, 8] });
+  fireEvent.change(screen.getByLabelText('Down body'), { target: { value: '#321123' } });
+  expect(onUpdate).toHaveBeenLastCalledWith('example', { settings: { downColor: '#321123' } });
+});

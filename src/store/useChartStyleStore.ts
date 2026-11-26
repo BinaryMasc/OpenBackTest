@@ -5,15 +5,9 @@ import {
   type DaySeparatorSettings,
 } from '../lib/chart/indicators/daySeparators';
 
-interface CandleColors {
-  upColor: string;
-  downColor: string;
-  upBorderColor: string;
-  downBorderColor: string;
-  upWickColor: string;
-  downWickColor: string;
-  backgroundColor: string;
-}
+import { DEFAULT_CANDLE_COLORS } from '../lib/chart/candleColors';
+
+type CandleColors = typeof DEFAULT_CANDLE_COLORS;
 
 interface ChartStyleState extends CandleColors {
   daySeparator: DaySeparatorSettings;
@@ -25,27 +19,17 @@ interface ChartStyleState extends CandleColors {
   reset: () => void;
 }
 
-const DEFAULT_COLORS: CandleColors = {
-  upColor: '#2DC08E',
-  downColor: '#F92855',
-  upBorderColor: '#2DC08E',
-  downBorderColor: '#F92855',
-  upWickColor: '#2DC08E',
-  downWickColor: '#F92855',
-  backgroundColor: '#0f172a',
-};
-
 export const useChartStyleStore = create<ChartStyleState>()(
   persist(
     (set) => ({
-      ...DEFAULT_COLORS,
+      ...DEFAULT_CANDLE_COLORS,
       daySeparator: DEFAULT_DAY_SEPARATOR_SETTINGS,
       isEditorOpen: false,
 
       setColors: (colors) => set(colors),
       setDaySeparator: (settings) => set(state => ({ daySeparator: { ...state.daySeparator, ...settings } })),
       setEditorOpen: (open) => set({ isEditorOpen: open }),
-      reset: () => set({ ...DEFAULT_COLORS, daySeparator: DEFAULT_DAY_SEPARATOR_SETTINGS }),
+      reset: () => set({ ...DEFAULT_CANDLE_COLORS, daySeparator: DEFAULT_DAY_SEPARATOR_SETTINGS }),
     }),
     {
       name: 'chart-style-storage',

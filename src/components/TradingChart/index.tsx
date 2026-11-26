@@ -164,6 +164,7 @@ export function TradingChart({ id, timeframe, isFirstChart }: TradingChartProps)
 
   const indicators = useIndicators(chartRef, {
     chartId: id,
+    timeframe,
     chartReady,
     symbol,
     dataReady: series.count > 0,

@@ -1,11 +1,14 @@
 import type { IndicatorTemplate } from 'klinecharts';
 import type { IndicatorInstance } from '../../types/indicatorTypes';
 
+import type { Timeframe } from '../../types';
+
 type SettingField = {
   key: string;
   label: string;
   /** Older saved charts stored this setting directly on the instance. */
   legacyTopLevel?: boolean;
+  legacySettingKey?: string;
 } & (
   | { type: 'color'; default: string }
   | { type: 'checkbox'; default: boolean }
@@ -14,6 +17,8 @@ type SettingField = {
 export interface IndicatorParameter {
   label: string;
   min?: number;
+  max?: number;
+  options?: { label: string; value: number }[];
   integer?: boolean;
 }
 
@@ -29,6 +34,7 @@ export interface CustomIndicatorDefinition {
   /** Leading calculation values preserved on reset. A null field is edited on the chart. */
   parameterPrefix?: (values: number[]) => (IndicatorParameter | null)[];
   parameterHelp?: string;
+  rightMargin?: (params: number[], timeframe: Timeframe) => { bars: number; pixels: number } | undefined;
   formatParams?: (params: number[]) => string;
 }
 
@@ -39,6 +45,7 @@ export function resolveIndicatorSettings(instance: IndicatorInstance, definition
   const settings = { ...instance.settings };
   for (const field of definition.settings) {
     let value: unknown = settings[field.key];
+    if (field.legacySettingKey) value ??= instance.settings?.[field.legacySettingKey];
     if (field.legacyTopLevel) {
       value ??= saved[field.key];
       delete saved[field.key];

@@ -15,6 +15,7 @@ export function IndicatorParameterFields({ instance, definition, onChange }: Par
     if (!Number.isFinite(value)) return;
     if (field.integer && !Number.isInteger(value)) return;
     if (field.min !== undefined && value < field.min) return;
+    if (field.max !== undefined && value > field.max) return;
     const next = [...instance.calcParams];
     next[field.index] = value;
     onChange(next);
@@ -28,9 +29,14 @@ export function IndicatorParameterFields({ instance, definition, onChange }: Par
           {fields.map(field => (
             <label key={field.index} className="flex items-center gap-2 text-xs text-slate-500">
               <span className="min-w-[60px]">{field.label}</span>
-              <input type="number" value={field.value} min={field.min ?? 1}
+              {field.options ? (
+                <select value={field.value} onChange={e => editParameter(field, Number(e.target.value))}
+                  className="min-w-0 flex-1 rounded bg-dark-700 px-2 py-1 text-slate-200">
+                  {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              ) : <input max={field.max} type="number" value={field.value} min={field.min ?? 1}
                 onChange={e => editParameter(field, Number(e.target.value))}
-                className="min-w-0 flex-1 bg-dark-700 border border-dark-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-primary-500 transition-colors" />
+                className="min-w-0 flex-1 bg-dark-700 border border-dark-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-primary-500 transition-colors" />}
             </label>
           ))}
         </fieldset>

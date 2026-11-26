@@ -76,7 +76,7 @@ export function IndicatorMenu({ onAdd }: { onAdd: (name: string) => void }) {
     <div ref={root} onBlur={event => {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
     }}>
-      <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open}
+      <button ref={trigger} type="button" aria-label="Indicators" aria-haspopup="listbox" aria-expanded={open}
         aria-controls={open ? listId : undefined}
         onClick={() => {
           setQuery('');

@@ -8,6 +8,9 @@ import { DAY_SEPARATOR_INDICATOR } from './indicators/daySeparators';
 import { fairValueGap } from './indicators/fairValueGap';
 import { marketStructure } from './indicators/marketStructure';
 
+import { htfCandle } from './indicators/htfCandle';
+import { liquiditySweeps } from './indicators/liquiditySweeps';
+
 const profileParameters = [{ label: 'Rows' }, { label: 'Width %' }, { label: 'Value area %' }];
 const rangeHelp = 'The highlighted range on the chart is the anchor. Drag its endpoints to change the selected range.';
 
@@ -28,6 +31,8 @@ const definitions: CustomIndicatorDefinition[] = [
   { template: VPVR_INDICATOR, label: 'Visible Range Volume Profile', parameters: profileParameters },
   fairValueGap,
   marketStructure,
+  liquiditySweeps,
+  htfCandle,
 ];
 
 const byName = new Map(definitions.map(definition => [definition.template.name, definition]));

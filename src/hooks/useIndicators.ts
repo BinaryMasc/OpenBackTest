@@ -18,6 +18,8 @@ import {
 import { getCustomIndicator, getIndicatorEngineName } from '../lib/chart/customIndicators';
 import { resolveIndicatorSettings } from '../lib/chart/indicatorDefinition';
 import { hexToRgba, isOscillatorIndicator } from '../lib/chart/utils';
+import { useProjectionMargin } from './useProjectionMargin';
+import type { Timeframe } from '../types';
 import { getSymbolKey } from '../lib/symbols';
 import { useChartStateStore } from '../store/useChartStateStore';
 
@@ -36,6 +38,7 @@ export interface AnchoredIndicatorRange {
 }
 
 interface UseIndicatorsOptions {
+  timeframe: Timeframe;
   chartId: string;
   chartReady: boolean;
   symbol: string;
@@ -43,11 +46,11 @@ interface UseIndicatorsOptions {
   onAnchoredOverlaySelected?: (overlay: Overlay) => void;
 }
 
-function indicatorAppearance(instance: IndicatorInstance) {
+function indicatorAppearance(instance: IndicatorInstance, timeframe: Timeframe) {
   const { color, opacity, settings } = instance;
   return {
     styles: { lines: [lineStyle(color, opacity)] },
-    ...(settings && { extendData: { color, opacity, settings } }),
+    ...(settings && { extendData: { color, opacity, settings, ...(getCustomIndicator(instance.name)?.rightMargin && { timeframe }) } }),
   };
 }
 
@@ -153,6 +156,7 @@ export function useIndicators(
   chartRef: React.RefObject<Chart | null>,
   {
     chartId = 'chart-1',
+    timeframe = '1m',
     chartReady = true,
     symbol = '',
     dataReady = true,
@@ -224,7 +228,7 @@ export function useIndicators(
       const engineName = getIndicatorEngineName(instance);
       const pane = getIndicatorPane(instance);
       chart.createIndicator(
-        { name: engineName, calcParams: instance.calcParams, visible: instance.visible, ...indicatorAppearance(instance) },
+        { name: engineName, calcParams: instance.calcParams, visible: instance.visible, ...indicatorAppearance(instance, timeframe) },
         !isOscillator,
         { id: pane },
       );
@@ -234,7 +238,7 @@ export function useIndicators(
     });
 
     MERGEABLE_OVERLAYS.forEach(name => syncMergedOverlay(chart, name, restored));
-  }, [onAnchoredOverlaySelected, syncMergedOverlay, updateAnchoredRange]);
+  }, [onAnchoredOverlaySelected, syncMergedOverlay, updateAnchoredRange, timeframe]);
 
   // Restore the chart-specific indicators after the chart instance is ready.
   useEffect(() => {
@@ -287,7 +291,7 @@ export function useIndicators(
         const isOscillator = isOscillatorIndicator(name);
         const paneId = isOscillator ? uniqueId : CANDLE_PANE_ID;
         const createdPane = chart.createIndicator(
-          { name: getIndicatorEngineName(instance), calcParams, ...indicatorAppearance(instance) },
+          { name: getIndicatorEngineName(instance), calcParams, ...indicatorAppearance(instance, timeframe) },
           !isOscillator,
           { id: paneId },
         );
@@ -304,7 +308,7 @@ export function useIndicators(
       }
       return instance;
     },
-    [chartRef, commit, nextColor, syncMergedOverlay],
+    [chartRef, commit, nextColor, syncMergedOverlay, timeframe],
   );
 
   /** Remove an indicator instance and, for anchored indicators, its range overlay. */
@@ -356,7 +360,7 @@ export function useIndicators(
           chart.overrideIndicator({ name: engineName, calcParams: updated.calcParams }, pane);
         }
         if (colorChanged || changes.settings !== undefined) {
-          chart.overrideIndicator({ name: engineName, ...indicatorAppearance(updated) }, pane);
+          chart.overrideIndicator({ name: engineName, ...indicatorAppearance(updated, timeframe) }, pane);
         }
       }
       if (isAnchoredIndicator(updated.name) && colorChanged) {
@@ -366,7 +370,7 @@ export function useIndicators(
         });
       }
     },
-    [chartRef, commit, syncMergedOverlay],
+    [chartRef, commit, syncMergedOverlay, timeframe],
   );
 
   /** Toggle visibility of an indicator instance */
@@ -384,14 +388,30 @@ export function useIndicators(
       if (MERGEABLE_OVERLAYS.has(instance.name)) {
         syncMergedOverlay(chart, instance.name, next);
       } else {
-        chart.overrideIndicator({ name: getIndicatorEngineName(instance), visible }, getIndicatorPane(instance));
+        chart.overrideIndicator({
+          name: getIndicatorEngineName(instance), visible,
+          ...(getCustomIndicator(instance.name)?.rightMargin && indicatorAppearance(instance, timeframe)),
+        }, getIndicatorPane(instance));
       }
       if (isAnchoredIndicator(instance.name)) {
         chart.overrideOverlay({ id: getRangeOverlayId(instance), visible });
       }
     },
-    [chartRef, commit, syncMergedOverlay],
+    [chartRef, commit, syncMergedOverlay, timeframe],
   );
+
+  // Projection settings depend on the chart interval even when the symbol stays the same.
+  useEffect(() => {
+    for (const instance of instancesRef.current) {
+      if (getCustomIndicator(instance.name)?.rightMargin) {
+        chartRef.current?.overrideIndicator({
+          name: getIndicatorEngineName(instance), ...indicatorAppearance(instance, timeframe),
+        }, CANDLE_PANE_ID);
+      }
+    }
+  }, [chartRef, timeframe]);
+
+  useProjectionMargin(chartRef, instances, timeframe);
 
   const editingInstance = instances.find(i => i.id === editingInstanceId) ?? null;
 

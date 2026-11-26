@@ -4,6 +4,8 @@
 
 OpenBackTest is an open-source browser tool for technical analysis and manual backtesting. Use it to study live charts or replay historical candles to test a trading strategy.
 
+![BTCUSDT hourly chart with market structure labels, volume profiles, three projected daily candles, and MACD](./public/btcusdt-analysis-demo.png)
+
 For development commands, architecture, and testing conventions, see the [contributor guide](AGENTS.md).
 
 **Playback**
