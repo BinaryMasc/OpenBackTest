@@ -40,13 +40,14 @@ import type { IndicatorInstance } from '../../types/indicatorTypes';
 interface TradingChartProps {
   id: string;
   timeframe: Timeframe;
+  isFirstChart?: boolean;
 }
 
 function isLinkedRangeOverlay(instance: IndicatorInstance, overlayId: string): boolean {
   return getRangeOverlayId(instance) === overlayId;
 }
 
-export function TradingChart({ id, timeframe }: TradingChartProps) {
+export function TradingChart({ id, timeframe, isFirstChart }: TradingChartProps) {
   const rawData = useBacktestStore(state => state.rawData);
   const currentIndex = useBacktestStore(state => state.currentIndex);
   const mode = useBacktestStore(state => state.mode);
@@ -315,7 +316,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
   return (
     <div className="w-full h-full flex flex-col bg-dark-900 text-slate-300">
       {/* Top Header Bar */}
-      <div className="h-10 border-b border-dark-700 bg-dark-800 flex items-center pl-14 pr-4 md:px-4 shrink-0 overflow-visible z-[60]">
+      <div className={`h-10 border-b border-dark-700 bg-dark-800 flex items-center pr-4 shrink-0 overflow-visible z-[60] ${isFirstChart ? 'pl-14' : 'pl-4'}`}>
         <SymbolLegend chartId={id} />
       </div>
 

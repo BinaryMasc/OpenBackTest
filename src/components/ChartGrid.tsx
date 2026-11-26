@@ -18,7 +18,7 @@ export function ChartGrid() {
         {charts.map((chart, index) => (
           <React.Fragment key={chart.id}>
             <Panel minSize={20} className="w-full h-full min-h-0 border border-dark-700 rounded-xl overflow-hidden shadow-2xl relative">
-              <TradingChart id={chart.id} timeframe={chart.timeframe} />
+              <TradingChart id={chart.id} timeframe={chart.timeframe} isFirstChart={index === 0} />
             </Panel>
             {index < charts.length - 1 && (
               <PanelResizeHandle className="w-2 mx-0.5 rounded flex items-center justify-center transition-colors hover:bg-dark-700 group cursor-col-resize">

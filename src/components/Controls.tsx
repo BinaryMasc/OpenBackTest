@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { useBacktestStore } from '../store/useBacktestStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { PlaybackBar } from './PlaybackBar';
@@ -23,12 +23,17 @@ export function Controls() {
   const rithmic = useRithmicConnection();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDesktopExpanded, setIsDesktopExpanded] = useState(true);
+  const mobileToggle = useRef<HTMLButtonElement>(null);
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   useEffect(() => {
     if (!isMobileMenuOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+      if (event.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+        mobileToggle.current?.focus();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -41,17 +46,33 @@ export function Controls() {
 
   const isLiveMode = mode === 'live';
 
+  const desktopToggleLabel = isDesktopExpanded ? 'Collapse trading controls' : 'Expand trading controls';
+  const toggleStyle = 'items-center justify-center rounded-md text-slate-300 hover:bg-dark-700 hover:text-white focus-visible:outline-2 focus-visible:outline-primary-500';
+
   return (
-    <>
+    <div className="relative shrink-0">
       <button
         type="button"
+        ref={mobileToggle}
         onClick={() => setIsMobileMenuOpen(open => !open)}
-        className="fixed top-1.5 left-1.5 z-[120] flex h-10 w-10 items-center justify-center rounded-lg border border-dark-700 bg-dark-800 text-slate-200 shadow-lg transition-colors hover:bg-dark-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 md:hidden"
+        className={`fixed left-2 flex size-10 md:hidden ${toggleStyle} ${isMobileMenuOpen ? 'top-4 z-[120]' : 'top-1 z-[70]'}`}
         aria-controls="trading-controls-sidebar"
         aria-expanded={isMobileMenuOpen}
         aria-label={isMobileMenuOpen ? 'Close trading controls menu' : 'Open trading controls menu'}
       >
         {isMobileMenuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setIsDesktopExpanded(expanded => !expanded)}
+        className={`absolute left-full top-1 z-[70] ml-2 hidden size-10 md:flex ${toggleStyle}`}
+        aria-controls="trading-controls-sidebar"
+        aria-expanded={isDesktopExpanded}
+        aria-label={desktopToggleLabel}
+        title={desktopToggleLabel}
+      >
+        {isDesktopExpanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
       </button>
 
       <button
@@ -66,7 +87,7 @@ export function Controls() {
       <aside
         id="trading-controls-sidebar"
         aria-label="Trading controls"
-        className={`fixed inset-y-0 left-0 z-[115] flex h-full w-80 max-w-[calc(100vw-3.5rem)] flex-col overflow-y-auto border-r border-dark-700 bg-dark-800 p-6 pt-16 text-sm shadow-xl transition-transform duration-200 ease-out ${isMobileMenuOpen ? 'visible translate-x-0' : 'invisible pointer-events-none -translate-x-full'} md:static md:z-10 md:w-80 md:max-w-none md:translate-x-0 md:visible md:pointer-events-auto md:overflow-hidden md:pt-6 md:shadow-xl`}
+        className={`fixed inset-y-0 left-0 z-[115] flex h-full w-80 max-w-[calc(100vw-3.5rem)] flex-col overflow-y-auto border-r border-dark-700 bg-dark-800 p-4 md:p-6 text-sm shadow-xl transition-transform duration-200 ease-out ${isMobileMenuOpen ? 'visible translate-x-0' : 'invisible pointer-events-none -translate-x-full'} ${isDesktopExpanded ? 'md:flex' : 'md:hidden'} md:static md:z-10 md:w-80 md:max-w-none md:translate-x-0 md:visible md:pointer-events-auto md:overflow-hidden md:shadow-xl`}
       >
         <SidebarHeader />
 
@@ -120,6 +141,6 @@ export function Controls() {
         onConnect={rithmic.connect}
         onClose={rithmic.closeDialog}
       />
-    </>
+    </div>
   );
 }

@@ -25,7 +25,7 @@ vi.mock('../../src/services/rithmicCredentialStorage', () => ({
 
 import { Controls } from '../../src/components/Controls';
 
-describe('Controls mobile sidebar', () => {
+describe('Controls sidebar', () => {
   const setMode = vi.fn();
   let marketDataState: {
     sourceId: string | null;
@@ -77,6 +77,24 @@ describe('Controls mobile sidebar', () => {
     loadStoredCredentials.mockResolvedValue(null);
   });
 
+  it('collapses and restores desktop controls independently of the mobile drawer', () => {
+    render(<Controls />);
+
+    const toggle = screen.getByRole('button', { name: 'Collapse trading controls' });
+    const sidebar = screen.getByRole('complementary', { name: 'Trading controls' });
+    expect(toggle).toHaveAttribute('aria-controls', sidebar.id);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Expand trading controls' })).toHaveAttribute('aria-expanded', 'false');
+    expect(sidebar).toHaveClass('md:hidden');
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(sidebar).toHaveClass('md:flex');
+    expect(screen.getByRole('button', { name: 'Open trading controls menu' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('opens, closes, and exposes an accessible mobile navigation toggle', () => {
     render(<Controls />);
 
@@ -96,6 +114,7 @@ describe('Controls mobile sidebar', () => {
 
     expect(screen.getByRole('button', { name: 'Open trading controls menu' })).toHaveAttribute('aria-expanded', 'false');
     expect(sidebar).toHaveClass('-translate-x-full', 'invisible');
+    expect(menuToggle).toHaveFocus();
   });
 
   it('keeps the drawer open when a mode is selected', () => {
