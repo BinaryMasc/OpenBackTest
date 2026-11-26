@@ -54,6 +54,31 @@ describe('useIndicators persistence', () => {
     );
   });
 
+  it('migrates chart-only settings and merges later edits per instance', () => {
+    const common = { color: '#ffffff', opacity: 0.5, visible: true, paneId: 'candle_pane' };
+    const legacy = [
+      { ...common, id: 'gap', name: 'FVG', calcParams: [8], downColor: '#102030' },
+      { ...common, id: 'structure', name: 'ChoCh-BoS', calcParams: [3], showLabels: false },
+      { ...common, id: 'other', name: 'FVG', calcParams: [0], downColor: '#112233',
+        settings: { downColor: '#998877', extra: 2 } },
+    ];
+    useChartStateStore.getState().saveIndicators('chart-1', legacy);
+    const chart = { createIndicator: vi.fn(), removeIndicator: vi.fn(), overrideIndicator: vi.fn() };
+    const chartRef = { current: chart as unknown as Chart };
+    const { result } = renderHook(() => useIndicators(chartRef, { symbol: 'ES' }));
+
+    const [gap, structure, other] = useChartStateStore.getState().getIndicators('chart-1', 'ES');
+    expect(gap.settings).toEqual({ downColor: '#102030' });
+    expect(structure.settings).toEqual({ showLabels: false });
+    expect(gap).not.toHaveProperty('downColor');
+    expect(structure).not.toHaveProperty('showLabels');
+    expect(other.settings).toEqual({ downColor: '#998877', extra: 2 });
+
+    act(() => result.current.updateInstance('other', { settings: { downColor: '#abcdef' } }));
+    expect(result.current.instances[2].settings).toEqual({ downColor: '#abcdef', extra: 2 });
+    expect(result.current.instances[0].settings).toEqual({ downColor: '#102030' });
+  });
+
   it('creates a range-backed anchored VWAP from two selected timestamps', () => {
     const chart = {
       removeIndicator: vi.fn(),
@@ -83,7 +108,7 @@ describe('useIndicators persistence', () => {
     });
 
     expect(chart.createIndicator).toHaveBeenCalledWith(
-      { name: expect.stringMatching(/^AVWAP_avwap_/), calcParams: [1000, 2000] },
+      expect.objectContaining({ name: expect.stringMatching(/^AVWAP_avwap_/), calcParams: [1000, 2000] }),
       true,
       { id: 'candle_pane' },
     );

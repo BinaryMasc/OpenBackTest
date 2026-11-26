@@ -9,14 +9,20 @@ import { CUSTOM_INDICATORS_LIST, CUSTOM_INDICATOR_PARAMS } from './customIndicat
 const NATIVE_INDICATORS = ['MA', 'EMA', 'MACD', 'VOL', 'RSI'] as const;
 export const INDICATORS_LIST = [...NATIVE_INDICATORS, ...CUSTOM_INDICATORS_LIST] as const;
 
-export const DEFAULT_INDICATOR_PARAMS: Record<string, number[]> = {
-  MA: [5, 10, 30, 60],
-  SMA: [14],
-  EMA: [14],
-  MACD: [12, 26, 9],
+export const NATIVE_PARAMETERS: Record<string, [label: string, defaultValue: number][]> = {
+  MA: [['Period 1', 5], ['Period 2', 10], ['Period 3', 30], ['Period 4', 60]],
+  SMA: [['Period', 14]],
+  EMA: [['Period', 14]],
+  MACD: [['Fast', 12], ['Slow', 26], ['Signal', 9]],
   VOL: [],
-  RSI: [14],
-  BOLL: [20],
+  RSI: [['Period', 14]],
+  BOLL: [['Period', 20]],
+};
+
+export const DEFAULT_INDICATOR_PARAMS: Record<string, number[]> = {
+  ...Object.fromEntries(Object.entries(NATIVE_PARAMETERS).map(([name, params]) =>
+    [name, params.map(([, defaultValue]) => defaultValue)],
+  )),
   ...CUSTOM_INDICATOR_PARAMS,
 };
 

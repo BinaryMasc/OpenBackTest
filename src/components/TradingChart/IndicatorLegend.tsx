@@ -1,6 +1,8 @@
 import { X, Eye, EyeOff } from 'lucide-react';
 import type { IndicatorInstance } from '../../types/indicatorTypes';
 
+import { getCustomIndicator } from '../../lib/chart/customIndicators';
+
 interface IndicatorLegendProps {
   instances: IndicatorInstance[];
   onSelect: (id: string) => void;
@@ -9,6 +11,8 @@ interface IndicatorLegendProps {
 }
 
 function formatIndicatorParams(instance: IndicatorInstance): string {
+  const format = getCustomIndicator(instance.name)?.formatParams;
+  if (format) return format(instance.calcParams);
   if (instance.name === 'AVWAP') return 'range selected';
   if (instance.name === 'AVP' && instance.calcParams.length >= 5) {
     return instance.calcParams.slice(2).join(', ');

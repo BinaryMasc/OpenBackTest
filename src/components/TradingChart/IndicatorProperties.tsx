@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import type { IndicatorInstance } from '../../types/indicatorTypes';
-import { DEFAULT_INDICATOR_PARAMS } from '../../lib/chart/constants';
+import type { IndicatorChanges, IndicatorInstance } from '../../types/indicatorTypes';
+import { getCustomIndicator } from '../../lib/chart/customIndicators';
+import { IndicatorAppearanceFields } from './IndicatorAppearanceFields';
+import { IndicatorParameterFields } from './IndicatorParameterFields';
 
 interface IndicatorPropertiesProps {
   instance: IndicatorInstance;
-  onUpdate: (id: string, changes: Partial<Pick<IndicatorInstance, 'calcParams' | 'color' | 'opacity'>>) => void;
+  onUpdate: (id: string, changes: IndicatorChanges) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
 }
@@ -39,16 +41,14 @@ export function IndicatorProperties({
     };
   }, [onClose]);
 
-  /** Labels for param slots based on indicator type */
-  const paramLabels = getParamLabels(instance.name);
-  const editableParamIndexes = getEditableParamIndexes(instance.name, instance.calcParams.length);
+  const definition = getCustomIndicator(instance.name);
+  const update = (changes: IndicatorChanges) => onUpdate(instance.id, changes);
 
   return (
     <div
       ref={panelRef}
-      className="absolute top-4 right-4 bg-dark-800 border border-dark-700 rounded-lg shadow-2xl z-50 w-64 overflow-hidden"
+      className="absolute top-4 right-4 bg-dark-800 border border-dark-700 rounded-lg shadow-2xl z-50 w-64 max-h-[calc(100%-2rem)] overflow-y-auto"
     >
-      {/* Header */}
       <div className="flex justify-between items-center px-3 py-2.5 border-b border-dark-700">
         <div className="flex items-center gap-2">
           <span
@@ -59,90 +59,14 @@ export function IndicatorProperties({
             {instance.name}
           </h3>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 transition-colors">
+        <button aria-label="Close indicator properties" onClick={onClose} className="text-slate-400 hover:text-slate-200 transition-colors">
           <X size={14} />
         </button>
       </div>
 
       <div className="p-3 flex flex-col gap-3">
-        {/* Color */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400">Color</label>
-          <input
-            type="color"
-            value={instance.color}
-            onChange={e => onUpdate(instance.id, { color: e.target.value })}
-            className="w-full h-8 cursor-pointer rounded bg-dark-700 border border-dark-600"
-          />
-        </div>
-
-        {/* Opacity */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400">
-            Opacity ({Math.round(instance.opacity * 100)}%)
-          </label>
-          <input
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.1"
-            value={instance.opacity}
-            onChange={e => onUpdate(instance.id, { opacity: Number(e.target.value) })}
-            className="w-full accent-primary-500"
-          />
-        </div>
-
-        {(instance.name === 'AVWAP' || instance.name === 'AVP') && (
-          <p className="text-[11px] leading-4 text-slate-500">
-            The highlighted range on the chart is the anchor. Drag its endpoints to change the selected range.
-          </p>
-        )}
-
-        {/* Parameters */}
-        {editableParamIndexes.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <label className="text-xs text-slate-400">Parameters</label>
-            <div className="flex flex-col gap-1.5">
-              {editableParamIndexes.map(idx => {
-                const param = instance.calcParams[idx];
-                return (
-                  <div key={idx} className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 min-w-[60px]">
-                      {paramLabels[idx] ?? `Param ${idx + 1}`}
-                    </span>
-                    <input
-                      type="number"
-                      value={param}
-                      min={1}
-                      onChange={e => {
-                        const newParams = [...instance.calcParams];
-                        newParams[idx] = Number(e.target.value);
-                        onUpdate(instance.id, { calcParams: newParams });
-                      }}
-                      className="flex-1 bg-dark-700 border border-dark-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-primary-500 transition-colors"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Reset params */}
-        {DEFAULT_INDICATOR_PARAMS[instance.name]?.length > 0 && (
-          <button
-            onClick={() =>
-              onUpdate(instance.id, {
-                calcParams: getResetParams(instance),
-              })
-            }
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors text-left"
-          >
-            Reset to defaults
-          </button>
-        )}
-
-        {/* Remove */}
+        <IndicatorAppearanceFields instance={instance} definition={definition} onChange={update} />
+        <IndicatorParameterFields instance={instance} definition={definition} onChange={calcParams => update({ calcParams })} />
         <button
           onClick={() => onRemove(instance.id)}
           className="mt-1 w-full py-1.5 bg-danger/20 text-danger border border-danger/30 rounded text-sm hover:bg-danger/30 transition-colors"
@@ -152,35 +76,4 @@ export function IndicatorProperties({
       </div>
     </div>
   );
-}
-
-/** Parameter labels for each indicator type */
-function getParamLabels(name: string): string[] {
-  const map: Record<string, string[]> = {
-    MA: ['Period 1', 'Period 2', 'Period 3', 'Period 4'],
-    EMA: ['Period'],
-    SMA: ['Period'],
-    MACD: ['Fast', 'Slow', 'Signal'],
-    RSI: ['Period'],
-    BOLL: ['Period'],
-    AVWAP: [],
-    AVP: ['', '', 'Rows', 'Width %', 'Value area %'],
-    ATR: ['Period'],
-    VPVR: ['Rows', 'Width %', 'Value area %'],
-  };
-  return map[name] ?? [];
-}
-
-function getEditableParamIndexes(name: string, parameterCount: number): number[] {
-  if (name === 'AVWAP') return [];
-  if (name === 'AVP' && parameterCount >= 5) return [2, 3, 4];
-  return Array.from({ length: parameterCount }, (_, index) => index);
-}
-
-function getResetParams(instance: IndicatorInstance): number[] {
-  const defaults = DEFAULT_INDICATOR_PARAMS[instance.name] ?? [];
-  if (instance.name === 'AVP' && instance.calcParams.length >= 5) {
-    return [instance.calcParams[0], instance.calcParams[1], ...defaults];
-  }
-  return [...defaults];
 }

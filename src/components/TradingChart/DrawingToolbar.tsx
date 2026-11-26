@@ -1,4 +1,6 @@
-import { Square, Minus, Trash2, Pen, Rows4, Undo2, Redo2, Circle, ChartLine, Ruler, ChevronDown, PanelBottom /** Rows2*/ } from 'lucide-react';
+import { Square, Minus, Trash2, Pen, Rows4, Undo2, Redo2, Circle, Ruler, PanelBottom } from 'lucide-react';
+
+import { IndicatorMenu } from './IndicatorMenu';
 
 interface DrawingToolbarProps {
   activeTool: string | null;
@@ -8,8 +10,7 @@ interface DrawingToolbarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  showIndicatorsMenu: boolean;
-  onToggleIndicatorsMenu: () => void;
+  onAddIndicator: (name: string) => void;
 }
 
 export function DrawingToolbar({
@@ -20,24 +21,11 @@ export function DrawingToolbar({
   onRedo,
   canUndo,
   canRedo,
-  showIndicatorsMenu,
-  onToggleIndicatorsMenu,
+  onAddIndicator,
 }: DrawingToolbarProps) {
-  const indicatorBtnActive = showIndicatorsMenu;
-
   return (
-    <div className="flex flex-col items-center gap-2 p-2 border-r border-dark-700 bg-dark-800 shrink-0 relative">
-      <button
-        onClick={onToggleIndicatorsMenu}
-        className={`px-1 py-3 rounded transition-colors flex items-center justify-center ${indicatorBtnActive
-          ? 'bg-primary-500/20 text-primary-500 border border-primary-500/30'
-          : 'hover:bg-dark-700 text-slate-400 border border-transparent'
-          }`}
-        title="Indicators"
-      >
-        <ChartLine size={20} />
-        <ChevronDown size={12} />
-      </button>
+    <div className="flex flex-col items-center gap-2 p-2 border-r border-dark-700 bg-dark-800 shrink-0 relative z-50">
+      <IndicatorMenu onAdd={onAddIndicator} />
 
       <div className="w-full h-px bg-dark-700 my-1" />
 

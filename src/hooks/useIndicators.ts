@@ -2,11 +2,10 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 
 import type { Chart, Overlay } from 'klinecharts';
 import { LineType } from 'klinecharts';
-import type { IndicatorInstance } from '../types/indicatorTypes';
+import type { IndicatorChanges, IndicatorInstance } from '../types/indicatorTypes';
 import {
   CANDLE_PANE_ID,
   DEFAULT_INDICATOR_PARAMS,
-  INDICATORS_LIST,
   INDICATOR_DEFAULT_COLORS,
   INDICATOR_RANGE_GROUP_ID,
 } from '../lib/chart/constants';
@@ -16,7 +15,8 @@ import {
   getRangeOverlayForAnchoredIndicator,
   isAnchoredIndicator,
 } from '../lib/chart/overlays';
-import { getAnchoredIndicatorEngineName, registerAnchoredIndicatorInstance } from '../lib/chart/customIndicators';
+import { getCustomIndicator, getIndicatorEngineName } from '../lib/chart/customIndicators';
+import { resolveIndicatorSettings } from '../lib/chart/indicatorDefinition';
 import { hexToRgba, isOscillatorIndicator } from '../lib/chart/utils';
 import { getSymbolKey } from '../lib/symbols';
 import { useChartStateStore } from '../store/useChartStateStore';
@@ -43,25 +43,20 @@ interface UseIndicatorsOptions {
   onAnchoredOverlaySelected?: (overlay: Overlay) => void;
 }
 
-type StyleChanges = Partial<Pick<IndicatorInstance, 'calcParams' | 'color' | 'opacity'>>;
+function indicatorAppearance(instance: IndicatorInstance) {
+  const { color, opacity, settings } = instance;
+  return {
+    styles: { lines: [lineStyle(color, opacity)] },
+    ...(settings && { extendData: { color, opacity, settings } }),
+  };
+}
 
-function lineStyles(color: string, opacity: number) {
-  return [{ size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: hexToRgba(color, opacity) }];
+function lineStyle(color: string, opacity: number) {
+  return { size: 2, style: LineType.Solid, smooth: false, dashedValue: [2, 2], color: hexToRgba(color, opacity) };
 }
 
 export function getRangeOverlayId(instance: Pick<IndicatorInstance, 'id' | 'rangeOverlayId'>): string {
   return instance.rangeOverlayId ?? `${instance.id}_range`;
-}
-
-/**
- * The name the indicator is registered under in KlineCharts. Anchored
- * indicators register one template per instance so several can coexist.
- */
-function getIndicatorEngineName(instance: Pick<IndicatorInstance, 'id' | 'name'>): string {
-  if (!isAnchoredIndicator(instance.name)) return instance.name;
-  const engineName = getAnchoredIndicatorEngineName(instance.name, instance.id);
-  registerAnchoredIndicatorInstance(instance.name, engineName);
-  return engineName;
 }
 
 /** Oscillators live in their own pane; every other indicator overlays the candles. */
@@ -165,7 +160,6 @@ export function useIndicators(
   }: Partial<UseIndicatorsOptions> = {}
 ) {
   const [instances, setInstances] = useState<IndicatorInstance[]>([]);
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const colorIndexRef = useRef(0);
   // Always the latest list, so chart callbacks never act on a stale render.
@@ -196,7 +190,7 @@ export function useIndicators(
 
     chart.createIndicator({ name, calcParams: visible.flatMap(inst => inst.calcParams) }, true, { id: CANDLE_PANE_ID });
     chart.overrideIndicator(
-      { name, styles: { lines: visible.flatMap(inst => inst.calcParams.map(() => lineStyles(inst.color, inst.opacity)[0])) } },
+      { name, styles: { lines: visible.flatMap(inst => inst.calcParams.map(() => lineStyle(inst.color, inst.opacity))) } },
       CANDLE_PANE_ID,
     );
   }, []);
@@ -229,10 +223,10 @@ export function useIndicators(
       const isOscillator = isOscillatorIndicator(instance.name);
       const engineName = getIndicatorEngineName(instance);
       const pane = getIndicatorPane(instance);
-      chart.createIndicator({ name: engineName, calcParams: instance.calcParams }, !isOscillator, { id: pane });
-      chart.overrideIndicator(
-        { name: engineName, visible: instance.visible, styles: { lines: lineStyles(instance.color, instance.opacity) } },
-        pane,
+      chart.createIndicator(
+        { name: engineName, calcParams: instance.calcParams, visible: instance.visible, ...indicatorAppearance(instance) },
+        !isOscillator,
+        { id: pane },
       );
       if (isAnchoredIndicator(instance.name)) {
         restoreRangeOverlay(chart, instance, updateAnchoredRange, onAnchoredOverlaySelected);
@@ -248,7 +242,8 @@ export function useIndicators(
     if (!chart || !chartReady || !dataReady || hydratedKeyRef.current === persistenceKey) return;
 
     removeIndicatorInstances(chart, instancesRef.current);
-    const restored = useChartStateStore.getState().getIndicators(chartId, symbol);
+    const restored = useChartStateStore.getState().getIndicators(chartId, symbol)
+      .map(instance => resolveIndicatorSettings(instance, getCustomIndicator(instance.name)));
     commit(restored);
     colorIndexRef.current = restored.length;
     setEditingInstanceId(null);
@@ -271,43 +266,37 @@ export function useIndicators(
       if (isAnchored && !range) return;
 
       const uniqueId = `${name.toLowerCase()}_${Date.now()}_${indicatorIdSequence++}`;
-      const color = nextColor();
+      const definition = getCustomIndicator(name);
+      const color = definition?.defaultColor ?? nextColor();
       const calcParams = initialCalcParams(name, isAnchored ? range : undefined);
       const isMergeable = MERGEABLE_OVERLAYS.has(name);
-      let paneId = CANDLE_PANE_ID;
-
-      if (!isMergeable) {
-        const isOscillator = isOscillatorIndicator(name);
-        const engineName = getIndicatorEngineName({ id: uniqueId, name });
-        // Oscillators get their own pane; KlineCharts returns its id.
-        const createdPane = chart.createIndicator(
-          { name: engineName, calcParams },
-          !isOscillator,
-          { id: isOscillator ? uniqueId : CANDLE_PANE_ID },
-        );
-        if (isOscillator) paneId = createdPane ?? uniqueId;
-        requestAnimationFrame(() => {
-          chartRef.current?.overrideIndicator({ name: engineName, styles: { lines: lineStyles(color, 1) } }, paneId);
-        });
-      }
-
-      const instance: IndicatorInstance = {
+      const instance = resolveIndicatorSettings({
         id: uniqueId,
         name,
         calcParams,
         color,
-        opacity: 1,
+        opacity: definition?.defaultOpacity ?? 1,
         visible: true,
-        paneId,
+        paneId: CANDLE_PANE_ID,
         rangeOverlayId: range?.overlayId,
         anchorStartTimestamp: range?.startTimestamp,
         anchorEndTimestamp: range?.endTimestamp,
-      };
+      }, definition);
+
+      if (!isMergeable) {
+        const isOscillator = isOscillatorIndicator(name);
+        const paneId = isOscillator ? uniqueId : CANDLE_PANE_ID;
+        const createdPane = chart.createIndicator(
+          { name: getIndicatorEngineName(instance), calcParams, ...indicatorAppearance(instance) },
+          !isOscillator,
+          { id: paneId },
+        );
+        if (isOscillator) instance.paneId = createdPane ?? paneId;
+      }
 
       const next = [...instancesRef.current, instance];
       commit(next);
       setEditingInstanceId(uniqueId);
-      setShowAddMenu(false);
 
       if (isMergeable) syncMergedOverlay(chart, name, next);
       if (range && isAnchored) {
@@ -344,11 +333,15 @@ export function useIndicators(
 
   /** Update calculation parameters or colors of an indicator instance */
   const updateInstance = useCallback(
-    (id: string, changes: StyleChanges) => {
+    (id: string, changes: IndicatorChanges) => {
       const chart = chartRef.current;
       if (!chart) return;
 
-      const next = instancesRef.current.map(inst => (inst.id === id ? { ...inst, ...changes } : inst));
+      const next = instancesRef.current.map(inst => inst.id === id ? {
+        ...inst,
+        ...changes,
+        ...(changes.settings && { settings: { ...inst.settings, ...changes.settings } }),
+      } : inst);
       commit(next);
       const updated = next.find(i => i.id === id);
       if (!updated) return;
@@ -362,8 +355,8 @@ export function useIndicators(
         if (changes.calcParams) {
           chart.overrideIndicator({ name: engineName, calcParams: updated.calcParams }, pane);
         }
-        if (colorChanged) {
-          chart.overrideIndicator({ name: engineName, styles: { lines: lineStyles(updated.color, updated.opacity) } }, pane);
+        if (colorChanged || changes.settings !== undefined) {
+          chart.overrideIndicator({ name: engineName, ...indicatorAppearance(updated) }, pane);
         }
       }
       if (isAnchoredIndicator(updated.name) && colorChanged) {
@@ -403,15 +396,12 @@ export function useIndicators(
   const editingInstance = instances.find(i => i.id === editingInstanceId) ?? null;
 
   return {
-    indicatorsList: INDICATORS_LIST,
     instances,
     addIndicator,
     removeIndicator,
     updateInstance,
     updateAnchoredRange,
     toggleVisibility,
-    showAddMenu,
-    setShowAddMenu,
     editingInstance,
     setEditingInstanceId,
   };

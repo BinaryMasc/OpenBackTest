@@ -8,6 +8,8 @@ export interface IndicatorInstance {
   calcParams: number[];
   /** HEX color for the indicator lines */
   color: string;
+  /** Serializable settings declared by this indicator's definition. */
+  settings?: Record<string, string | number | boolean>;
   /** Opacity from 0.1 to 1.0 */
   opacity: number;
   /** Whether this indicator is currently visible */
@@ -20,3 +22,5 @@ export interface IndicatorInstance {
   anchorStartTimestamp?: number;
   anchorEndTimestamp?: number;
 }
+
+export type IndicatorChanges = Partial<Pick<IndicatorInstance, 'calcParams' | 'color' | 'opacity' | 'settings'>>;

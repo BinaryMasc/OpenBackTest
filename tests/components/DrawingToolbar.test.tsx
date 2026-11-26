@@ -15,8 +15,7 @@ describe('DrawingToolbar', () => {
         onRedo={vi.fn()}
         canUndo={false}
         canRedo={false}
-        showIndicatorsMenu={false}
-        onToggleIndicatorsMenu={vi.fn()}
+        onAddIndicator={vi.fn()}
       />
     );
 

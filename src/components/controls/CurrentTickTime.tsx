@@ -1,10 +1,12 @@
 import { useBacktestStore } from '../../store/useBacktestStore';
 
+const localDateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' });
+
 /** Isolated so only this small box re-renders on every playback tick. */
 export function CurrentTickTime() {
   const time = useBacktestStore(state => state.rawData[state.currentIndex]?.time);
   const label = time !== undefined
-    ? new Date(time * 1000).toISOString().replace('T', ' ').substring(0, 19)
+    ? localDateTime.format(time * 1000)
     : 'No Data';
 
   return (

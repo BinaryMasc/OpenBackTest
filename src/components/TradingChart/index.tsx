@@ -8,7 +8,6 @@ import { getRangeOverlayId, useIndicators } from '../../hooks/useIndicators';
 import { DRAWING_GROUP_ID } from '../../lib/chart/constants';
 import { ChartContainer } from './ChartContainer';
 import { DrawingToolbar } from './DrawingToolbar';
-import { IndicatorMenu } from './IndicatorMenu';
 import { IndicatorProperties } from './IndicatorProperties';
 import { IndicatorLegend } from './IndicatorLegend';
 import { OverlayEditor } from './OverlayEditor';
@@ -233,7 +232,6 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
     const rangeOverlay = getRangeOverlayForAnchoredIndicator(name);
     if (rangeOverlay && isAnchoredIndicator(name)) {
       setPendingRangeIndicator(name);
-      indicators.setShowAddMenu(false);
       handleToolClick(rangeOverlay);
       return;
     }
@@ -321,7 +319,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
         <SymbolLegend chartId={id} />
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="@container flex-1 flex overflow-hidden">
         <DrawingToolbar
           activeTool={activeTool}
           onToolClick={handleToolClick}
@@ -330,10 +328,7 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
           onRedo={handleRedo}
           canUndo={canUndo}
           canRedo={canRedo}
-          showIndicatorsMenu={indicators.showAddMenu}
-          onToggleIndicatorsMenu={() =>
-            indicators.setShowAddMenu(!indicators.showAddMenu)
-          }
+          onAddIndicator={handleAddIndicator}
         />
 
         <div className="flex-1 relative w-full h-full" onContextMenu={handleContextMenu}>
@@ -359,14 +354,6 @@ export function TradingChart({ id, timeframe }: TradingChartProps) {
             onRemove={indicators.removeIndicator}
             onToggleVisibility={indicators.toggleVisibility}
           />
-
-          {/* Add indicator dropdown */}
-          {indicators.showAddMenu && (
-            <IndicatorMenu
-              onAdd={handleAddIndicator}
-              onClose={() => indicators.setShowAddMenu(false)}
-            />
-          )}
 
           {/* Indicator properties popup */}
           {indicators.editingInstance && (

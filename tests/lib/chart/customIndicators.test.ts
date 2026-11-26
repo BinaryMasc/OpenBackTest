@@ -18,12 +18,6 @@ type Indicator = {
   draw: (params: unknown) => boolean;
 };
 
-function vpvr() {
-  const call = registered.mock.calls[0];
-  if (!call) throw new Error('VPVR was not registered');
-  return call[0] as unknown as Indicator;
-}
-
 function registeredByName(name: string) {
   const call = registered.mock.calls.find(([indicator]) => indicator.name === name);
   if (!call) throw new Error(`${name} was not registered`);
@@ -37,7 +31,7 @@ describe('VPVR custom indicator', () => {
   });
 
   it('registers VPVR and returns one empty result per candle', () => {
-    const indicator = vpvr();
+    const indicator = registeredByName('VPVR');
     expect(indicator).toMatchObject({
       name: 'VPVR',
       shortName: 'VPVR',
@@ -49,7 +43,7 @@ describe('VPVR custom indicator', () => {
   });
 
   it('returns false for empty, flat, and zero-volume visible ranges', () => {
-    const draw = vpvr().draw;
+    const draw = registeredByName('VPVR').draw;
     const base = {
       ctx: {},
       bounding: { width: 400 },
@@ -62,7 +56,7 @@ describe('VPVR custom indicator', () => {
   });
 
   it('distributes volume across rows and draws the profile and POC', () => {
-    const draw = vpvr().draw;
+    const draw = registeredByName('VPVR').draw;
     const ctx = {
       fillRect: vi.fn(),
       beginPath: vi.fn(),
@@ -147,7 +141,9 @@ describe('additional custom indicators', () => {
   });
 
   it('registers anchored VWAP, anchored volume profile, and ATR independently', () => {
-    expect(registered.mock.calls.map(([indicator]) => indicator.name)).toEqual(['VPVR', 'AVWAP', 'AVP', 'ATR', 'DAY_SEPARATOR']);
+    expect(new Set(registered.mock.calls.map(([indicator]) => indicator.name))).toEqual(
+      new Set(['VPVR', 'AVWAP', 'AVP', 'ATR', 'DAY_SEPARATOR', 'FVG', 'ChoCh-BoS']),
+    );
     expect(registeredByName('AVWAP').calcParams).toEqual([]);
     expect(registeredByName('AVP').calcParams).toEqual([120, 30, 70]);
     expect(registeredByName('ATR').calcParams).toEqual([14]);
