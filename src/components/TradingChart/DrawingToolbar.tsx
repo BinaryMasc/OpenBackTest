@@ -2,7 +2,10 @@ import { Square, Minus, Trash2, Pen, Rows4, Undo2, Redo2, Circle, Ruler, PanelBo
 
 import { IndicatorMenu } from './IndicatorMenu';
 
+import type { IndicatorContext } from '../../lib/chart/indicatorDefinition';
+
 interface DrawingToolbarProps {
+  indicatorContext?: IndicatorContext;
   activeTool: string | null;
   onToolClick: (tool: string) => void;
   onClear: () => void;
@@ -22,10 +25,11 @@ export function DrawingToolbar({
   canUndo,
   canRedo,
   onAddIndicator,
+  indicatorContext,
 }: DrawingToolbarProps) {
   return (
     <div className="flex flex-col items-center gap-2 p-2 border-r border-dark-700 bg-dark-800 shrink-0 relative z-50">
-      <IndicatorMenu onAdd={onAddIndicator} />
+      <IndicatorMenu onAdd={onAddIndicator} context={indicatorContext} />
 
       <div className="w-full h-px bg-dark-700 my-1" />
 

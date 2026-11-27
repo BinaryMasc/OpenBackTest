@@ -3,6 +3,8 @@ import { ChartNoAxesCombined, ChevronRight, Search } from 'lucide-react';
 import { INDICATORS_LIST } from '../../lib/chart/constants';
 import { getCustomIndicator } from '../../lib/chart/customIndicators';
 
+import { supportsIndicator, type IndicatorContext } from '../../lib/chart/indicatorDefinition';
+
 const nativeLabels: Record<string, string> = {
   MA: 'Moving Average',
   EMA: 'Exponential Moving Average',
@@ -12,11 +14,12 @@ const nativeLabels: Record<string, string> = {
 };
 
 const indicators = INDICATORS_LIST.map(name => {
-  const label = getCustomIndicator(name)?.label ?? nativeLabels[name] ?? name;
-  return { name, label, searchText: `${name} ${label}`.toLowerCase() };
+  const definition = getCustomIndicator(name);
+  const label = definition?.label ?? nativeLabels[name] ?? name;
+  return { name, label, definition, searchText: `${name} ${label} ${definition?.compatibility?.message ?? ''}`.toLowerCase() };
 });
 
-export function IndicatorMenu({ onAdd }: { onAdd: (name: string) => void }) {
+export function IndicatorMenu({ onAdd, context }: { onAdd: (name: string) => void; context?: IndicatorContext }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -42,6 +45,7 @@ export function IndicatorMenu({ onAdd }: { onAdd: (name: string) => void }) {
   }
 
   function select(name: string) {
+    if (!supportsIndicator(getCustomIndicator(name), context)) return;
     close();
     onAdd(name);
   }
@@ -107,13 +111,18 @@ export function IndicatorMenu({ onAdd }: { onAdd: (name: string) => void }) {
               className="min-w-0 flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-400" />
           </label>
           <ul ref={list} role="listbox" id={listId} aria-label="Indicators" className="min-h-0 max-h-72 overflow-y-auto p-1">
-            {matches.map(({ name, label }, index) => (
+            {matches.map(({ name, label, definition }, index) => (
               <li key={name} id={`${listId}-${name}`} role="option" aria-selected={activeIndex === index}
+                aria-disabled={!supportsIndicator(definition, context)}
                 onMouseEnter={() => setActiveIndex(index)} onMouseDown={event => event.preventDefault()}
                 onClick={() => select(name)}
-                className={`flex cursor-pointer items-center justify-between gap-3 rounded px-2.5 py-2 text-sm ${activeIndex === index
+                className={`flex cursor-pointer aria-disabled:cursor-default aria-disabled:opacity-60 items-center justify-between gap-3 rounded px-2.5 py-2 text-sm ${activeIndex === index
                   ? 'bg-blue-500/15 text-blue-200' : 'text-slate-300'}`}>
-                <span>{label}</span>
+                <span>{label}{definition?.compatibility && (
+                  <span className="block text-[11px] leading-4 text-slate-400">
+                    {supportsIndicator(definition, context) ? 'Compatible' : 'Unavailable'} · {definition.compatibility.message}
+                  </span>
+                )}</span>
                 <span className="shrink-0 font-mono text-[10px] text-slate-400">{name}</span>
               </li>
             ))}

@@ -207,3 +207,37 @@ describe('useIndicators persistence', () => {
     expect(result.current.instances.some(instance => instance.id === secondVwap.id)).toBe(true);
   });
 });
+
+it('suspends restored API levels while seeking and loads fresh levels on return to the live edge', async () => {
+  const chart = { createIndicator: vi.fn(), removeIndicator: vi.fn(), overrideIndicator: vi.fn() };
+  const chartRef = { current: chart as unknown as Chart };
+  const instance = { name: 'Book Liquidity', id: 'saved-book', calcParams: [], visible: true,
+    paneId: 'candle_pane', opacity: 1, color: '#abcdef' };
+  useChartStateStore.getState().saveIndicators('chart-1', [instance], 'BTCUSDT');
+  const fetchData = vi.fn(async (url: string) => Response.json(url.includes('index-tickers')
+    ? { code: '0', data: [{ idxPx: '1' }] }
+    : { data: { map: { coin: 'BTC', buckets: [{ px: 8, top: 12, stopBuyUsd: 25e6, stopSellUsd: 0 }] } } }));
+  vi.stubGlobal('fetch', fetchData);
+  try {
+    const hook = renderHook(({ liveEdge }) => useIndicators(chartRef, {
+      symbol: 'BTCUSDT', context: { sourceId: 'binance', symbol: 'BTCUSDT', liveEdge },
+    }), { initialProps: { liveEdge: false } });
+    act(() => { hook.result.current.addIndicator('BTC GEX'); });
+    expect(hook.result.current.instances).toHaveLength(1);
+    expect(hook.result.current.instances[0]).toMatchObject({ name: 'Stop Liquidity', calcParams: [10] });
+    expect(fetchData).not.toHaveBeenCalled();
+    expect(chart.overrideIndicator).toHaveBeenLastCalledWith(expect.objectContaining({ visible: false }), 'candle_pane');
+    await act(async () => hook.rerender({ liveEdge: true }));
+    expect(hook.result.current.snapshots?.['Stop Liquidity']?.levels).toHaveLength(1);
+    hook.rerender({ liveEdge: false });
+    expect(hook.result.current.snapshots).toBeUndefined();
+    expect(chart.overrideIndicator).toHaveBeenLastCalledWith(expect.objectContaining({
+      visible: false, extendData: expect.objectContaining({ levels: [] }),
+    }), 'candle_pane');
+    await act(async () => hook.rerender({ liveEdge: true }));
+    expect(fetchData).toHaveBeenCalledTimes(4);
+    hook.unmount();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

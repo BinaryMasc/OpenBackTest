@@ -34,6 +34,8 @@ import {
   patchOverlayExtendData,
   type AnchoredIndicatorName,
 } from '../../lib/chart/overlays';
+import { supportsIndicator } from '../../lib/chart/indicatorDefinition';
+import { getCustomIndicator } from '../../lib/chart/customIndicators';
 import { sameSymbol } from '../../lib/symbols';
 import type { IndicatorInstance } from '../../types/indicatorTypes';
 
@@ -58,6 +60,7 @@ export function TradingChart({ id, timeframe, isFirstChart }: TradingChartProps)
   const marketDataConnectionLost = useMarketDataStore(state => state.isConnectionLost);
   const marketDataIsStale = useMarketDataStore(state => state.isDataStale);
   const marketDataSymbol = useMarketDataStore(state => state.symbol);
+  const assetType = useMarketDataStore(state => state.symbols.find(item => item.symbol === symbol)?.assetType);
   const refreshMarketData = useMarketDataStore(state => state.setSymbol);
   const binanceHistory = useMarketDataStore(state => state.binanceHistory[timeframe]);
   const reloadBinanceHistory = useMarketDataStore(state => state.reloadBinanceHistory);
@@ -162,8 +165,16 @@ export function TradingChart({ id, timeframe, isFirstChart }: TradingChartProps)
     }
   }, [chartRef, selectedOverlay]);
 
+  const chartSource = marketDataConnected && symbol === marketDataSymbol ? marketDataSourceId : null;
+  const liveEdge = !!chartSource && !marketDataConnectionLost && !marketDataIsStale && !isLiveDataLoading
+    && series.count > 0 && currentIndex >= 0 && currentIndex === rawData.length - 1;
+  const indicatorContext = useMemo(() => ({
+    symbol, sourceId: chartSource, assetType, liveEdge,
+  }), [symbol, chartSource, assetType, liveEdge]);
+
   const indicators = useIndicators(chartRef, {
     chartId: id,
+    context: indicatorContext,
     timeframe,
     chartReady,
     symbol,
@@ -331,6 +342,7 @@ export function TradingChart({ id, timeframe, isFirstChart }: TradingChartProps)
           canUndo={canUndo}
           canRedo={canRedo}
           onAddIndicator={handleAddIndicator}
+          indicatorContext={indicatorContext}
         />
 
         <div className="flex-1 relative w-full h-full" onContextMenu={handleContextMenu}>
@@ -352,15 +364,39 @@ export function TradingChart({ id, timeframe, isFirstChart }: TradingChartProps)
           {/* Top-left indicator legend */}
           <IndicatorLegend
             instances={indicators.instances}
+            statusFor={instance => {
+              const definition = getCustomIndicator(instance.name);
+              if (!definition?.compatibility) return undefined;
+              if (!supportsIndicator(definition, indicatorContext)) return definition.compatibility.message;
+              if (instance.visible && definition.compatibility.levelFeed) {
+                const snapshot = indicators.snapshots?.[instance.name];
+                if (!snapshot) return 'Loading levels…';
+                if (definition.matchesLevel && snapshot.attribution) {
+                  const shown = indicators.levelsFor(instance)?.length ?? 0;
+                  return `${shown} of ${snapshot.levels.length} levels meet minimum · ${snapshot.message}`;
+                }
+                return snapshot.message;
+              }
+            }}
             onSelect={handleIndicatorSelect}
             onRemove={indicators.removeIndicator}
             onToggleVisibility={indicators.toggleVisibility}
           />
 
+          <div className="pointer-events-none absolute bottom-8 right-2 z-40 flex gap-2">
+            {Object.entries(indicators.snapshots ?? {}).map(([name, { attribution }]) => attribution && (
+              <a key={name} href={attribution.url} target="_blank" rel="noreferrer"
+                className="pointer-events-auto rounded bg-dark-900/80 px-1.5 py-0.5 text-[10px] text-slate-300 underline">
+                {attribution.text}
+              </a>
+            ))}
+          </div>
+
           {/* Indicator properties popup */}
           {indicators.editingInstance && (
             <IndicatorProperties
               instance={indicators.editingInstance}
+              levels={indicators.editingLevels}
               onUpdate={indicators.updateInstance}
               onRemove={indicators.removeIndicator}
               onClose={() => indicators.setEditingInstanceId(null)}

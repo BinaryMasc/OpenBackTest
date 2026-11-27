@@ -16,7 +16,9 @@ import {
   isAnchoredIndicator,
 } from '../lib/chart/overlays';
 import { getCustomIndicator, getIndicatorEngineName } from '../lib/chart/customIndicators';
-import { resolveIndicatorSettings } from '../lib/chart/indicatorDefinition';
+import type { IndicatorLevel } from '../services/indicatorLevels';
+import { useIndicatorFeeds } from './useIndicatorFeeds';
+import { resolveIndicatorSettings, supportsIndicator, type IndicatorContext } from '../lib/chart/indicatorDefinition';
 import { hexToRgba, isOscillatorIndicator } from '../lib/chart/utils';
 import { useProjectionMargin } from './useProjectionMargin';
 import type { Timeframe } from '../types';
@@ -43,7 +45,14 @@ interface UseIndicatorsOptions {
   chartReady: boolean;
   symbol: string;
   dataReady?: boolean;
+  context?: IndicatorContext;
   onAnchoredOverlaySelected?: (overlay: Overlay) => void;
+}
+
+function selectedLevels(instance: IndicatorInstance, levels?: IndicatorLevel[]) {
+  const matchesLevel = getCustomIndicator(instance.name)?.matchesLevel;
+  return levels?.filter(level => (!level.visibleWhen || instance.settings?.[level.visibleWhen] === true)
+    && (!matchesLevel || matchesLevel(level, instance.calcParams)));
 }
 
 function indicatorAppearance(instance: IndicatorInstance, timeframe: Timeframe) {
@@ -160,6 +169,7 @@ export function useIndicators(
     chartReady = true,
     symbol = '',
     dataReady = true,
+    context,
     onAnchoredOverlaySelected,
   }: Partial<UseIndicatorsOptions> = {}
 ) {
@@ -168,7 +178,7 @@ export function useIndicators(
   const colorIndexRef = useRef(0);
   // Always the latest list, so chart callbacks never act on a stale render.
   const instancesRef = useRef<IndicatorInstance[]>([]);
-  const hydratedKeyRef = useRef<string | null>(null);
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
 
   const persistenceKey = `${getSymbolKey(symbol)}:${chartId}`;
 
@@ -243,29 +253,37 @@ export function useIndicators(
   // Restore the chart-specific indicators after the chart instance is ready.
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !chartReady || !dataReady || hydratedKeyRef.current === persistenceKey) return;
+    if (!chart || !chartReady || !dataReady || hydratedKey === persistenceKey) return;
 
     removeIndicatorInstances(chart, instancesRef.current);
     const restored = useChartStateStore.getState().getIndicators(chartId, symbol)
-      .map(instance => resolveIndicatorSettings(instance, getCustomIndicator(instance.name)));
+      .map(saved => {
+        // Charts saved before the stop-only feed used the book indicator name and colors.
+        const instance = saved.name === 'Book Liquidity'
+          ? { ...saved, name: 'Stop Liquidity', settings: { sellColor: saved.settings?.askColor ?? '#fb7185' } }
+          : saved;
+        const calcParams = instance.name === 'Stop Liquidity' && instance.calcParams.length === 0
+          ? initialCalcParams(instance.name) : instance.calcParams;
+        return resolveIndicatorSettings({ ...instance, calcParams }, getCustomIndicator(instance.name));
+      });
     commit(restored);
     colorIndexRef.current = restored.length;
     setEditingInstanceId(null);
     restoreInstances(chart, restored);
-    hydratedKeyRef.current = persistenceKey;
-  }, [chartId, chartReady, chartRef, commit, dataReady, persistenceKey, restoreInstances, symbol]);
+    setHydratedKey(persistenceKey);
+  }, [chartId, chartReady, chartRef, commit, dataReady, hydratedKey, persistenceKey, restoreInstances, symbol]);
 
   useEffect(() => {
     // Never let a render from before hydration overwrite the saved indicators.
-    if (instances !== instancesRef.current || hydratedKeyRef.current !== persistenceKey) return;
+    if (instances !== instancesRef.current || hydratedKey !== persistenceKey) return;
     useChartStateStore.getState().saveIndicators(chartId, instances, symbol);
-  }, [chartId, instances, persistenceKey, symbol]);
+  }, [chartId, hydratedKey, instances, persistenceKey, symbol]);
 
   /** Add a new indicator instance */
   const addIndicator = useCallback(
     (name: string, range?: AnchoredIndicatorRange) => {
       const chart = chartRef.current;
-      if (!chart) return;
+      if (!chart || !supportsIndicator(getCustomIndicator(name), context)) return;
       const isAnchored = isAnchoredIndicator(name);
       if (isAnchored && !range) return;
 
@@ -308,7 +326,7 @@ export function useIndicators(
       }
       return instance;
     },
-    [chartRef, commit, nextColor, syncMergedOverlay, timeframe],
+    [chartRef, commit, context, nextColor, syncMergedOverlay, timeframe],
   );
 
   /** Remove an indicator instance and, for anchored indicators, its range overlay. */
@@ -411,18 +429,43 @@ export function useIndicators(
     }
   }, [chartRef, timeframe]);
 
+  // A saved indicator keeps its settings while its feed is unavailable. Only fetch
+  // for instances hydrated for the current chart, and keep snapshots out of persistence.
+  const activeContext = chartReady && dataReady && hydratedKey === persistenceKey ? context : undefined;
+  const snapshots = useIndicatorFeeds(instances, activeContext);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || instances !== instancesRef.current) return;
+    for (const instance of instances) {
+      const definition = getCustomIndicator(instance.name);
+      if (!definition?.compatibility) continue;
+      const visible = instance.visible && supportsIndicator(definition, activeContext);
+      const snapshot = visible ? snapshots?.[instance.name] : undefined;
+      chart.overrideIndicator({
+        name: getIndicatorEngineName(instance), visible,
+        ...(definition.compatibility.levelFeed && { extendData: {
+          color: instance.color, opacity: instance.opacity, settings: instance.settings,
+          levels: selectedLevels(instance, snapshot?.levels) ?? [],
+        } }),
+      }, getIndicatorPane(instance));
+    }
+  }, [activeContext, chartRef, instances, snapshots]);
+
   useProjectionMargin(chartRef, instances, timeframe);
 
   const editingInstance = instances.find(i => i.id === editingInstanceId) ?? null;
 
   return {
     instances,
+    snapshots,
+    levelsFor: (instance: IndicatorInstance) => selectedLevels(instance, snapshots?.[instance.name]?.levels),
     addIndicator,
     removeIndicator,
     updateInstance,
     updateAnchoredRange,
     toggleVisibility,
     editingInstance,
+    editingLevels: editingInstance ? selectedLevels(editingInstance, snapshots?.[editingInstance.name]?.levels) : undefined,
     setEditingInstanceId,
   };
 }

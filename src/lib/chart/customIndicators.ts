@@ -11,6 +11,8 @@ import { marketStructure } from './indicators/marketStructure';
 import { htfCandle } from './indicators/htfCandle';
 import { liquiditySweeps } from './indicators/liquiditySweeps';
 
+import { bitcoinGex, stopLiquidity } from './indicators/liveLevels';
+
 const profileParameters = [{ label: 'Rows' }, { label: 'Width %' }, { label: 'Value area %' }];
 const rangeHelp = 'The highlighted range on the chart is the anchor. Drag its endpoints to change the selected range.';
 
@@ -33,6 +35,8 @@ const definitions: CustomIndicatorDefinition[] = [
   marketStructure,
   liquiditySweeps,
   htfCandle,
+  bitcoinGex,
+  stopLiquidity,
 ];
 
 const byName = new Map(definitions.map(definition => [definition.template.name, definition]));

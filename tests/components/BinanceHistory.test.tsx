@@ -56,6 +56,101 @@ describe('Binance candle history', () => {
     vi.restoreAllMocks();
   });
 
+  it('toggles gamma flip on the chart and in properties, saves the choice and clears a missing crossing', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 26, 8));
+    const chain = [
+      { instrument_name: 'BTC-27NOV26-100-C', open_interest: 1, mark_iv: 50, underlying_price: 100 },
+      { instrument_name: 'BTC-27NOV26-110-P', open_interest: 1, mark_iv: 50, underlying_price: 100 },
+    ];
+    const fetchData = vi.fn(async (url: string) => {
+      if (url.includes('exchangeInfo')) return exchangeInfo('BTCUSDT');
+      if (url.includes('www.deribit.com')) return Response.json({
+        result: url.includes('get_index_price') ? { index_price: 100 } : chain,
+      });
+      return Response.json(klines(12, 60_000));
+    });
+    vi.stubGlobal('fetch', fetchData);
+    render(<ChartGrid />);
+    await act(() => useMarketDataStore.getState().connectDefaultSource());
+    fireEvent.click(screen.getByRole('button', { name: 'Indicators' }));
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: /Bitcoin Gamma Exposure/ })));
+    const saved = () => useChartStateStore.getState().getIndicators('chart-1', 'BTCUSDT')[0];
+    const chartLevels = () => getChart().getIndicatorByPaneId('candle_pane', 'BTC GEX_' + saved().id)?.extendData.levels;
+    const checkbox = screen.getByRole('checkbox', { name: 'Show gamma flip' });
+    const list = screen.getByRole('list', { name: 'Latest price levels' });
+    const requests = fetchData.mock.calls.length;
+    expect(checkbox).not.toBeChecked();
+    expect(list).not.toHaveTextContent('Gamma flip');
+    fireEvent.click(checkbox);
+    expect(chartLevels()).toContainEqual(expect.objectContaining({ label: 'Gamma flip' }));
+    expect(list).toHaveTextContent('Gamma flip');
+    expect(saved().settings?.showGammaFlip).toBe(true);
+    fireEvent.click(checkbox);
+    expect(chartLevels()).not.toContainEqual(expect.objectContaining({ label: 'Gamma flip' }));
+    expect(list).not.toHaveTextContent('Gamma flip');
+    expect(fetchData.mock.calls.length).toBe(requests);
+    fireEvent.click(checkbox);
+    chain.pop();
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(list).not.toHaveTextContent('Gamma flip');
+    expect(list).toHaveTextContent('Max pain');
+    expect(screen.getByText('Gamma flip unavailable in this snapshot.')).toBeVisible();
+  });
+
+  it('renders stop liquidity, preserves edited colors, and discards a pending response after disconnect', async () => {
+    vi.useFakeTimers();
+    let completeRefresh: ((response: Response) => void) | undefined;
+    let stopSignal: AbortSignal | undefined;
+    const stops = { data: { map: { coin: 'BTC', buckets: [{ px: 9, top: 11, stopBuyUsd: 15e6, stopSellUsd: 4.5e6 }] } } };
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes('exchangeInfo')) return exchangeInfo('BTCUSDT');
+      if (url.includes('index-tickers')) return Response.json({ code: '0', data: [{ idxPx: '1' }] });
+      if (url.includes('/whales/stops')) {
+        if (stopSignal) {
+          stopSignal = options?.signal ?? undefined;
+          return new Promise<Response>(resolve => { completeRefresh = resolve; });
+        }
+        stopSignal = options?.signal ?? undefined;
+        return Response.json(stops);
+      }
+      return Response.json(klines(12, 60_000));
+    }));
+    render(<ChartGrid />);
+    await act(() => useMarketDataStore.getState().connectDefaultSource());
+    fireEvent.click(screen.getByRole('button', { name: 'Indicators' }));
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: /Buy Stops & Sell Stops/ })));
+    expect(screen.getByRole('list', { name: 'Latest price levels' })).toHaveTextContent('Buy stops $15M');
+    expect(screen.getByRole('link', { name: 'Data by Blockmetric' })).toHaveAttribute('href', 'https://blockmetric.io/');
+    fireEvent.change(screen.getByLabelText('Buy stops'), { target: { value: '#123456' } });
+    const [saved] = useChartStateStore.getState().getIndicators('chart-1', 'BTCUSDT');
+    const engineName = saved.name + '_' + saved.id;
+    const getIndicator = () => getChart().getIndicatorByPaneId('candle_pane', engineName);
+    expect(getIndicator()?.extendData).toMatchObject({ color: '#123456', levels: [{ price: 10 }] });
+    expect(saved).not.toHaveProperty('levels');
+    const minimum = screen.getByRole('spinbutton', { name: 'Minimum notional (USD millions)' });
+    expect(minimum).toHaveValue(10);
+    expect(screen.getByRole('list', { name: 'Active indicators' })).toHaveTextContent('1 of 2 levels meet minimum');
+    fireEvent.change(minimum, { target: { value: '4.5' } });
+    expect(getIndicator()?.extendData.levels).toHaveLength(2);
+    expect(screen.getByRole('list', { name: 'Latest price levels' })).toHaveTextContent('Sell stops $4.5M');
+    expect(useChartStateStore.getState().getIndicators('chart-1', 'BTCUSDT')[0].calcParams).toEqual([4.5]);
+    fireEvent.change(minimum, { target: { value: '20' } });
+    expect(getIndicator()?.extendData.levels).toEqual([]);
+    expect(screen.getByRole('list', { name: 'Active indicators' })).toHaveTextContent('0 of 2 levels meet minimum');
+    fireEvent.change(minimum, { target: { value: '0' } });
+    expect(getIndicator()?.extendData.levels).toHaveLength(2);
+    await act(() => vi.advanceTimersByTimeAsync(300_000));
+    expect(completeRefresh).toBeDefined();
+    act(() => useMarketDataStore.getState().disconnectSource());
+    expect(stopSignal?.aborted).toBe(true);
+    await act(async () => completeRefresh!(Response.json(stops)));
+    expect(getIndicator()?.extendData.levels).toEqual([]);
+    expect(getIndicator()?.visible).toBe(false);
+    expect(useChartStateStore.getState().getIndicators('chart-1', 'BTCUSDT')[0].visible).toBe(true);
+    expect(screen.getByRole('list', { name: 'Active indicators' })).toHaveTextContent('Requires a live Binance USDT pair');
+  });
+
   it('loads daily candles in the chart, paginates a larger selection, and updates the live candle', async () => {
     vi.useFakeTimers();
     const minutes = klines(12, 60_000);

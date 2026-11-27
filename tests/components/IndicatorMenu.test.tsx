@@ -65,3 +65,26 @@ describe('indicator search', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 });
+
+it('explains pair and feed restrictions and enforces them for pointer and keyboard selection', () => {
+  const onAdd = vi.fn();
+  const context = { symbol: 'ETHUSDT', sourceId: 'binance', liveEdge: true };
+  const view = render(<IndicatorMenu onAdd={onAdd} context={context} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Indicators' }));
+  const search = screen.getByRole('combobox');
+  fireEvent.change(search, { target: { value: 'gex' } });
+  const gex = screen.getByRole('option');
+  expect(gex).toHaveTextContent('Requires Binance Futures BTCUSDT');
+  expect(gex).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(gex);
+  fireEvent.keyDown(search, { key: 'Enter' });
+  expect(onAdd).not.toHaveBeenCalled();
+  fireEvent.change(search, { target: { value: 'buy stops' } });
+  expect(screen.getByRole('option')).toHaveTextContent('Compatible');
+  view.rerender(<IndicatorMenu onAdd={onAdd} context={{ ...context, sourceId: 'rithmic' }} />);
+  expect(screen.getByRole('option')).toHaveAttribute('aria-disabled', 'true');
+  view.rerender(<IndicatorMenu onAdd={onAdd} context={{ ...context, symbol: 'BTCUSDT' }} />);
+  fireEvent.change(search, { target: { value: 'max pain' } });
+  fireEvent.keyDown(search, { key: 'Enter' });
+  expect(onAdd).toHaveBeenCalledExactlyOnceWith('BTC GEX');
+});

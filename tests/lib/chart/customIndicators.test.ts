@@ -142,7 +142,7 @@ describe('additional custom indicators', () => {
 
   it('registers anchored VWAP, anchored volume profile, and ATR independently', () => {
     expect(new Set(registered.mock.calls.map(([indicator]) => indicator.name))).toEqual(
-      new Set(['VPVR', 'AVWAP', 'AVP', 'ATR', 'DAY_SEPARATOR', 'FVG', 'ChoCh-BoS', 'HTF Candle', 'Sweeps']),
+      new Set(['VPVR', 'AVWAP', 'AVP', 'ATR', 'DAY_SEPARATOR', 'FVG', 'ChoCh-BoS', 'HTF Candle', 'Sweeps', 'BTC GEX', 'Stop Liquidity']),
     );
     expect(registeredByName('AVWAP').calcParams).toEqual([]);
     expect(registeredByName('AVP').calcParams).toEqual([120, 30, 70]);
@@ -169,4 +169,32 @@ describe('additional custom indicators', () => {
       { value: 2.75 },
     ]);
   });
+});
+
+it('draws live levels using independent colors and keeps them off historical views', () => {
+  registerCustomIndicators();
+  const draw = registeredByName('Stop Liquidity').draw;
+  const strokes: { color: string; width: number; offset: number }[] = [];
+  const ctx = {
+    save: vi.fn(), restore: vi.fn(), fillStyle: '', strokeStyle: '',
+    setLineDash: vi.fn(), lineWidth: 1, lineDashOffset: 0,
+    measureText: () => ({ width: 40 }), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
+    stroke() { strokes.push({ color: this.strokeStyle, width: this.lineWidth, offset: this.lineDashOffset }); }, fillText: vi.fn(),
+  };
+  const params = {
+    ctx, bounding: { width: 400, height: 300 }, kLineDataList: [{}, {}], visibleRange: { to: 1 },
+    yAxis: { convertToPixel: (price: number) => price },
+    indicator: { extendData: { color: '#aaaaaa', opacity: 0.5, settings: { sellColor: '#112233' },
+      levels: [{ price: 150, label: 'Buy stops $10M', stopTier: 1 },
+        { price: 150, label: 'Sell stops $30M', stopTier: 3, colorKey: 'sellColor' }] } },
+  };
+  draw(params);
+  expect(strokes).toEqual([]);
+  draw({ ...params, visibleRange: { to: 2 } });
+  expect(ctx.setLineDash).toHaveBeenCalledWith([6, 6]);
+  expect(strokes).toEqual([
+    { color: '#112233', width: 3, offset: 6 }, { color: '#aaaaaa', width: 1, offset: 0 },
+  ]);
+  const labelRows = ctx.fillText.mock.calls.map(call => Number(call[2]));
+  expect(Math.abs(labelRows[0] - labelRows[1])).toBeGreaterThanOrEqual(15);
 });

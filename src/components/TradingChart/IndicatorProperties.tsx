@@ -5,8 +5,11 @@ import { getCustomIndicator } from '../../lib/chart/customIndicators';
 import { IndicatorAppearanceFields } from './IndicatorAppearanceFields';
 import { IndicatorParameterFields } from './IndicatorParameterFields';
 
+import type { IndicatorLevel } from '../../services/indicatorLevels';
+
 interface IndicatorPropertiesProps {
   instance: IndicatorInstance;
+  levels?: IndicatorLevel[];
   onUpdate: (id: string, changes: IndicatorChanges) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
@@ -19,6 +22,7 @@ interface IndicatorPropertiesProps {
  */
 export function IndicatorProperties({
   instance,
+  levels,
   onUpdate,
   onRemove,
   onClose,
@@ -65,6 +69,15 @@ export function IndicatorProperties({
       </div>
 
       <div className="p-3 flex flex-col gap-3">
+        {definition?.compatibility && <p className="text-xs text-slate-300">{definition.compatibility.message}</p>}
+        {!!levels?.length && <ul aria-label="Latest price levels" className="space-y-1 text-xs">
+          {levels.map(level => <li key={level.label + level.price} className="flex justify-between gap-2">
+            <span>{level.label}</span><strong>{level.price}</strong>
+          </li>)}
+        </ul>}
+        {instance.settings?.showGammaFlip === true && !!levels?.length && !levels.some(level => level.visibleWhen === 'showGammaFlip') && (
+          <p className="text-xs text-slate-400">Gamma flip unavailable in this snapshot.</p>
+        )}
         <IndicatorAppearanceFields instance={instance} definition={definition} onChange={update} />
         <IndicatorParameterFields instance={instance} definition={definition} onChange={calcParams => update({ calcParams })} />
         <button

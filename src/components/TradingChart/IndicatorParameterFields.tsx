@@ -34,7 +34,7 @@ export function IndicatorParameterFields({ instance, definition, onChange }: Par
                   className="min-w-0 flex-1 rounded bg-dark-700 px-2 py-1 text-slate-200">
                   {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-              ) : <input max={field.max} type="number" value={field.value} min={field.min ?? 1}
+              ) : <input max={field.max} step={field.integer ? 1 : 'any'} type="number" value={field.value} min={field.min ?? 1}
                 onChange={e => editParameter(field, Number(e.target.value))}
                 className="min-w-0 flex-1 bg-dark-700 border border-dark-600 rounded px-2 py-1 text-xs text-slate-200 outline-none focus:border-primary-500 transition-colors" />}
             </label>

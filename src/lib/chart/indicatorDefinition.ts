@@ -1,7 +1,8 @@
 import type { IndicatorTemplate } from 'klinecharts';
 import type { IndicatorInstance } from '../../types/indicatorTypes';
 
-import type { Timeframe } from '../../types';
+import type { IndicatorLevel, LevelFeed } from '../../services/indicatorLevels';
+import type { MarketSymbol, Timeframe } from '../../types';
 
 type SettingField = {
   key: string;
@@ -22,9 +23,37 @@ export interface IndicatorParameter {
   integer?: boolean;
 }
 
+export interface IndicatorContext {
+  sourceId: string | null;
+  symbol: string;
+  assetType?: MarketSymbol['assetType'];
+  liveEdge: boolean;
+}
+
+interface IndicatorCompatibility {
+  message: string;
+  levelFeed?: LevelFeed;
+  sourceIds?: string[];
+  symbols?: string[];
+  matchesSymbol?: (symbol: string) => boolean;
+  assetTypes?: NonNullable<MarketSymbol['assetType']>[];
+}
+
+export function supportsIndicator(definition?: CustomIndicatorDefinition, context?: IndicatorContext) {
+  const rule = definition?.compatibility;
+  if (!rule) return true;
+  if (!context || (rule.levelFeed && !context.liveEdge)) return false;
+  return (!rule.sourceIds || (context.sourceId !== null && rule.sourceIds.includes(context.sourceId)))
+    && (!rule.symbols || rule.symbols.includes(context.symbol.trim().toUpperCase()))
+    && (!rule.matchesSymbol || rule.matchesSymbol(context.symbol))
+    && (!rule.assetTypes || (!!context.assetType && rule.assetTypes.includes(context.assetType)));
+}
+
 export interface CustomIndicatorDefinition {
   template: IndicatorTemplate;
   label: string;
+  compatibility?: IndicatorCompatibility;
+  matchesLevel?: (level: IndicatorLevel, params: number[]) => boolean;
   perInstance?: boolean;
   colorLabel?: string;
   defaultColor?: string;
